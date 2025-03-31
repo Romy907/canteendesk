@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:canteendesk/Login/ForgotPasswordScreen.dart';
+import 'package:canteendesk/Manager/ManagerHome.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -41,9 +42,16 @@ class _LoginScreenState extends State<LoginScreen> {
         isLoading = false;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Login successful!")),
-      );
+      if (email == "manageraccount@goatmail.uk" && password == "asdfg123") {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => ManagerHome()),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Invalid email or password")),
+        );
+      }
     });
   }
 
@@ -63,7 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
               flex: 1,
               child: Padding(
                 padding: EdgeInsets.symmetric(
-                  horizontal: screenWidth * 0.1, // Responsive padding
+                  horizontal: screenWidth * 0.1,
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -133,22 +141,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                 style: TextStyle(fontSize: 16, color: Colors.white)),
                       ),
                     ),
-                    // const SizedBox(height: 15),
-                    // Center(
-                    //   child: GestureDetector(
-                    //     onTap: () {
-                    //       Navigator.pushReplacement(
-                    //         context,
-                    //         MaterialPageRoute(builder: (context) => const SignUpScreen()),
-                    //       );
-                    //     },
-                    //     child: const Text(
-                    //       "Don't have an account? Create",
-                    //       style: TextStyle(
-                    //           color: Colors.blue, decoration: TextDecoration.underline),
-                    //     ),
-                    //   ),
-                    // ),
                   ],
                 ),
               ),
