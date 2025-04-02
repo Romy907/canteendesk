@@ -95,15 +95,25 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     double screenWidth = MediaQuery.of(context).size.width;
     double screenHeight = MediaQuery.of(context).size.height;
 
     return RawKeyboardListener(
       focusNode: FocusNode(),
+      autofocus: true, // Ensures the keyboard listener is active
       onKey: (RawKeyEvent event) {
-        if (event is RawKeyDownEvent && event.logicalKey == LogicalKeyboardKey.enter) {
-          _login();
+        if (event is RawKeyDownEvent) {
+          if (event.logicalKey == LogicalKeyboardKey.enter) {
+            _login();
+          } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+            _moveFocusUp();
+          } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+            _moveFocusDown();
+          } else if (event.logicalKey == LogicalKeyboardKey.escape) {
+            _clearFields();
+          }
         }
       },
       child: Scaffold(
@@ -123,7 +133,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     children: [
                       const Text(
                         "Hello!",
-                        style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            fontSize: 32, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 25),
                       _buildTextField(
@@ -162,13 +173,15 @@ class _LoginScreenState extends State<LoginScreen> {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                    builder: (context) => const ForgotPasswordScreen()),
+                                    builder: (context) =>
+                                        const ForgotPasswordScreen()),
                               );
                             },
                             child: const Text(
                               "Forgot password?",
                               style: TextStyle(
-                                  color: Colors.blue, decoration: TextDecoration.underline),
+                                  color: Colors.blue,
+                                  decoration: TextDecoration.underline),
                             ),
                           ),
                         ],
@@ -185,16 +198,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                 borderRadius: BorderRadius.circular(30)),
                           ),
                           child: isLoading
-                              ? const CircularProgressIndicator(color: Colors.white)
+                              ? const CircularProgressIndicator(
+                                  color: Colors.white)
                               : const Text("LOGIN",
-                                  style: TextStyle(fontSize: 16, color: Colors.white)),
+                                  style: TextStyle(
+                                      fontSize: 16, color: Colors.white)),
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-
               // Right Side - Welcome Panel with Swipeable Background
               Expanded(
                 flex: 1,
@@ -209,7 +223,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       },
                       itemBuilder: (context, index) {
                         return Image.asset(
-                          _imagePaths[index % _imagePaths.length], // Loop images infinitely
+                          _imagePaths[index %
+                              _imagePaths.length], // Loop images infinitely
                           width: screenWidth * 0.5,
                           height: screenHeight,
                           fit: BoxFit.cover,
@@ -224,11 +239,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: Padding(
                           padding: EdgeInsets.symmetric(horizontal: 50),
                           child: Text(
-                             "Welcome to Campus Cuisine!",
+                            "Welcome to Campus Cuisine!",
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: 36,  // Increased font size
+                              fontSize: 36, // Increased font size
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -243,6 +258,26 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ),
     );
+  }
+
+// Function to move focus up (Arrow Up Key)
+  void _moveFocusUp() {
+    if (_passwordFocusNode.hasFocus) {
+      FocusScope.of(context).requestFocus(_emailFocusNode);
+    }
+  }
+
+// Function to move focus down (Arrow Down Key)
+  void _moveFocusDown() {
+    if (_emailFocusNode.hasFocus) {
+      FocusScope.of(context).requestFocus(_passwordFocusNode);
+    }
+  }
+
+// Function to clear both input fields (Escape Key)
+  void _clearFields() {
+    _emailController.clear();
+    _passwordController.clear();
   }
 
   Widget _buildTextField({
