@@ -17,6 +17,7 @@ class ManagerHome extends StatefulWidget {
 
 class _ManagerHomeState extends State<ManagerHome>
     with SingleTickerProviderStateMixin {
+      
   // Animation controller
   late AnimationController _animationController;
   bool _isLoading = true;
@@ -188,6 +189,7 @@ class _ManagerHomeState extends State<ManagerHome>
       });
     }
   }
+  
 
   @override
   Widget build(BuildContext context) {
@@ -419,176 +421,6 @@ class _ManagerHomeState extends State<ManagerHome>
         ),
       );
       }),
-    );
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: List.generate(2, (index) {
-            return Expanded(
-              child: Container(
-                margin: const EdgeInsets.only(right: 8),
-                decoration: BoxDecoration(
-                  gradient: gradients[index],
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: gradients[index].colors.first.withAlpha(76),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withAlpha(51),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(icons[index], color: Colors.white, size: 22),
-                          ),
-                          Row(
-                            children: [
-                              Icon(
-                                trends[statistics.keys.elementAt(index)]! >= 0
-                                    ? Icons.trending_up
-                                    : Icons.trending_down,
-                                color: Colors.white,
-                                size: 16,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${trends[statistics.keys.elementAt(index)]!.abs().toStringAsFixed(1)}%',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        statistics.keys.elementAt(index) == "Revenue"
-                            ? "₹${NumberFormat('#,###').format(statistics[statistics.keys.elementAt(index)])}"
-                            : statistics[statistics.keys.elementAt(index)].toString(),
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      Text(
-                        statistics.keys.elementAt(index),
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white.withAlpha(229),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: List.generate(2, (index) {
-            index += 2;
-            return Expanded(
-              child: Container(
-                margin: const EdgeInsets.only(right: 8),
-                decoration: BoxDecoration(
-                  gradient: gradients[index],
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: gradients[index].colors.first.withAlpha(76),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withAlpha(51),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(icons[index], color: Colors.white, size: 22),
-                          ),
-                          Row(
-                            children: [
-                              Icon(
-                                trends[statistics.keys.elementAt(index)]! >= 0
-                                    ? Icons.trending_up
-                                    : Icons.trending_down,
-                                color: Colors.white,
-                                size: 16,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${trends[statistics.keys.elementAt(index)]!.abs().toStringAsFixed(1)}%',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        statistics.keys.elementAt(index) == "Revenue"
-                            ? "₹${NumberFormat('#,###').format(statistics[statistics.keys.elementAt(index)])}"
-                            : statistics[statistics.keys.elementAt(index)].toString(),
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      Text(
-                        statistics.keys.elementAt(index),
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white.withAlpha(229),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }),
-        ),
-      ],
     );
   }
 
