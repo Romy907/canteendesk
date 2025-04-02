@@ -20,14 +20,13 @@ class _LoginScreenState extends State<LoginScreen> {
   bool isLoading = false;
   final PageController _pageController = PageController();
   int _currentIndex = 0;
+  Timer? _timer;
 
   final List<String> _imagePaths = [
     "assets/img/images.jpg",
     "assets/img/image-18.png",
     "assets/img/depositphotos_150990618-stock-photo-concept-of-online-food-ordering.jpg",
   ];
-
-  Timer? _timer;
 
   @override
   void initState() {
@@ -42,7 +41,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (_pageController.hasClients) {
         _currentIndex++;
         _pageController.animateToPage(
-          _currentIndex % _imagePaths.length, // Loop images
+          _currentIndex,
           duration: const Duration(milliseconds: 500),
           curve: Curves.easeInOut,
         );
@@ -59,6 +58,163 @@ class _LoginScreenState extends State<LoginScreen> {
     _pageController.dispose();
     _timer?.cancel();
     super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    double screenWidth = MediaQuery.of(context).size.width;
+    double screenHeight = MediaQuery.of(context).size.height;
+
+    return Scaffold(
+      body: SizedBox(
+        width: screenWidth,
+        height: screenHeight,
+        child: Row(
+          children: [
+            // Left Side - Login Form
+            Expanded(
+              flex: 1,
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.1),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Hello!",
+                      style:
+                          TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 25),
+                    _buildTextField(
+                      controller: _emailController,
+                      hintText: "E-mail",
+                      icon: Icons.email,
+                      focusNode: _emailFocusNode,
+                    ),
+                    const SizedBox(height: 15),
+                    _buildTextField(
+                      controller: _passwordController,
+                      hintText: "Password",
+                      icon: Icons.lock,
+                      isPassword: true,
+                      focusNode: _passwordFocusNode,
+                    ),
+                    const SizedBox(height: 15),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Checkbox(
+                              value: _isChecked,
+                              onChanged: (value) {
+                                setState(() {
+                                  _isChecked = value ?? false;
+                                });
+                              },
+                            ),
+                            const Text("Remember me"),
+                          ],
+                        ),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) =>
+                                      const ForgotPasswordScreen()),
+                            );
+                          },
+                          child: const Text(
+                            "Forgot password?",
+                            style: TextStyle(
+                                color: Colors.blue,
+                                decoration: TextDecoration.underline),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: isLoading ? null : _login,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.deepPurpleAccent.shade200,
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30)),
+                        ),
+                        child: isLoading
+                            ? const CircularProgressIndicator(
+                                color: Colors.white)
+                            : const Text("LOGIN",
+                                style: TextStyle(
+                                    fontSize: 16, color: Colors.white)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Right Side - Welcome Panel with Swiping Images
+            Expanded(
+              flex: 1,
+              child: Stack(
+                children: [
+                  PageView.builder(
+                    controller: _pageController,
+                    itemCount: _imagePaths.length +
+                        1, // Add extra slide for smooth looping
+                    onPageChanged: (index) {
+                      setState(() {
+                        _currentIndex = index;
+                      });
+
+                      // If last extra page is reached, reset to the first image
+                      if (index == _imagePaths.length) {
+                        Future.delayed(const Duration(milliseconds: 300), () {
+                          _pageController.jumpToPage(0);
+                        });
+                      }
+                    },
+                    itemBuilder: (context, index) {
+                      return Image.asset(
+                        _imagePaths[index % _imagePaths.length], // Loop images
+                        width: screenWidth * 0.5,
+                        height: screenHeight,
+                        fit: BoxFit.cover,
+                      );
+                    },
+                  ),
+                  Container(
+                    width: screenWidth * 0.5,
+                    height: screenHeight,
+                    color: Colors.black.withOpacity(0.3),
+                    child: const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 50),
+                        child: Text(
+                          "Welcome to Campus Cuisine!",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 36,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _login() {
@@ -94,192 +250,6 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
-  @override
-  @override
-  Widget build(BuildContext context) {
-    double screenWidth = MediaQuery.of(context).size.width;
-    double screenHeight = MediaQuery.of(context).size.height;
-
-    return RawKeyboardListener(
-      focusNode: FocusNode(),
-      autofocus: true, // Ensures the keyboard listener is active
-      onKey: (RawKeyEvent event) {
-        if (event is RawKeyDownEvent) {
-          if (event.logicalKey == LogicalKeyboardKey.enter) {
-            _login();
-          } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-            _moveFocusUp();
-          } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-            _moveFocusDown();
-          } else if (event.logicalKey == LogicalKeyboardKey.escape) {
-            _clearFields();
-          }
-        }
-      },
-      child: Scaffold(
-        body: SizedBox(
-          width: screenWidth,
-          height: screenHeight,
-          child: Row(
-            children: [
-              // Left Side - Login Form
-              Expanded(
-                flex: 1,
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.1),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "Hello!",
-                        style: TextStyle(
-                            fontSize: 32, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 25),
-                      _buildTextField(
-                        controller: _emailController,
-                        hintText: "E-mail",
-                        icon: Icons.email,
-                        focusNode: _emailFocusNode,
-                      ),
-                      const SizedBox(height: 15),
-                      _buildTextField(
-                        controller: _passwordController,
-                        hintText: "Password",
-                        icon: Icons.lock,
-                        isPassword: true,
-                        focusNode: _passwordFocusNode,
-                      ),
-                      const SizedBox(height: 15),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Checkbox(
-                                value: _isChecked,
-                                onChanged: (value) {
-                                  setState(() {
-                                    _isChecked = value ?? false;
-                                  });
-                                },
-                              ),
-                              const Text("Remember me"),
-                            ],
-                          ),
-                          GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (context) =>
-                                        const ForgotPasswordScreen()),
-                              );
-                            },
-                            child: const Text(
-                              "Forgot password?",
-                              style: TextStyle(
-                                  color: Colors.blue,
-                                  decoration: TextDecoration.underline),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: isLoading ? null : _login,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.deepPurpleAccent.shade200,
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(30)),
-                          ),
-                          child: isLoading
-                              ? const CircularProgressIndicator(
-                                  color: Colors.white)
-                              : const Text("LOGIN",
-                                  style: TextStyle(
-                                      fontSize: 16, color: Colors.white)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              // Right Side - Welcome Panel with Swipeable Background
-              Expanded(
-                flex: 1,
-                child: Stack(
-                  children: [
-                    PageView.builder(
-                      controller: _pageController,
-                      onPageChanged: (index) {
-                        setState(() {
-                          _currentIndex = index;
-                        });
-                      },
-                      itemBuilder: (context, index) {
-                        return Image.asset(
-                          _imagePaths[index %
-                              _imagePaths.length], // Loop images infinitely
-                          width: screenWidth * 0.5,
-                          height: screenHeight,
-                          fit: BoxFit.cover,
-                        );
-                      },
-                    ),
-                    Container(
-                      width: screenWidth * 0.5,
-                      height: screenHeight,
-                      color: Colors.black.withOpacity(0.3), // Dark overlay
-                      child: const Center(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 50),
-                          child: Text(
-                            "Welcome to Campus Cuisine!",
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 36, // Increased font size
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-// Function to move focus up (Arrow Up Key)
-  void _moveFocusUp() {
-    if (_passwordFocusNode.hasFocus) {
-      FocusScope.of(context).requestFocus(_emailFocusNode);
-    }
-  }
-
-// Function to move focus down (Arrow Down Key)
-  void _moveFocusDown() {
-    if (_emailFocusNode.hasFocus) {
-      FocusScope.of(context).requestFocus(_passwordFocusNode);
-    }
-  }
-
-// Function to clear both input fields (Escape Key)
-  void _clearFields() {
-    _emailController.clear();
-    _passwordController.clear();
-  }
-
   Widget _buildTextField({
     required TextEditingController controller,
     required String hintText,
@@ -287,19 +257,33 @@ class _LoginScreenState extends State<LoginScreen> {
     required FocusNode focusNode,
     bool isPassword = false,
   }) {
-    return TextField(
-      controller: controller,
-      focusNode: focusNode,
-      obscureText: isPassword,
-      onSubmitted: (_) => _login(), // Trigger login on Enter key press
-      decoration: InputDecoration(
-        prefixIcon: Icon(icon, color: Colors.deepPurple),
-        hintText: hintText,
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
-          borderSide: BorderSide.none,
+    return RawKeyboardListener(
+      focusNode: FocusNode(),
+      onKey: (event) {
+        if (event is RawKeyDownEvent) {
+          if (event.logicalKey == LogicalKeyboardKey.arrowDown ||
+              event.logicalKey == LogicalKeyboardKey.tab) {
+            FocusScope.of(context).nextFocus(); // Move to next field
+          } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+            FocusScope.of(context).previousFocus(); // Move to previous field
+          } else if (event.logicalKey == LogicalKeyboardKey.enter) {
+            _login(); // Trigger login on Enter key
+          }
+        }
+      },
+      child: TextField(
+        controller: controller,
+        focusNode: focusNode,
+        obscureText: isPassword,
+        decoration: InputDecoration(
+          prefixIcon: Icon(icon, color: Colors.deepPurple),
+          hintText: hintText,
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: BorderSide.none,
+          ),
         ),
       ),
     );

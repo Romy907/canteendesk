@@ -13,14 +13,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   bool isLoading = false;
   final PageController _pageController = PageController();
   int _currentIndex = 0;
+  Timer? _timer;
 
   final List<String> _imagePaths = [
     "assets/img/images.jpg",
     "assets/img/image-18.png",
     "assets/img/depositphotos_150990618-stock-photo-concept-of-online-food-ordering.jpg",
   ];
-
-  Timer? _timer;
 
   @override
   void initState() {
@@ -33,7 +32,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       if (_pageController.hasClients) {
         _currentIndex++;
         _pageController.animateToPage(
-          _currentIndex % _imagePaths.length, // Loop images
+          _currentIndex,
           duration: const Duration(milliseconds: 500),
           curve: Curves.easeInOut,
         );
@@ -133,21 +132,29 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   ),
                 ),
 
-                // Right Side - Welcome Panel with Swipeable Background
+                // Right Side - Image Slider with Smooth Loop
                 Expanded(
                   flex: 1,
                   child: Stack(
                     children: [
                       PageView.builder(
                         controller: _pageController,
+                        itemCount: _imagePaths.length + 1, // Extra slide for looping
                         onPageChanged: (index) {
                           setState(() {
                             _currentIndex = index;
                           });
+
+                          // Reset to first image when reaching the extra slide
+                          if (index == _imagePaths.length) {
+                            Future.delayed(const Duration(milliseconds: 300), () {
+                              _pageController.jumpToPage(0);
+                            });
+                          }
                         },
                         itemBuilder: (context, index) {
                           return Image.asset(
-                            _imagePaths[index % _imagePaths.length], // Loop images infinitely
+                            _imagePaths[index % _imagePaths.length], // Loop images
                             width: screenWidth * 0.5,
                             height: screenHeight,
                             fit: BoxFit.cover,
