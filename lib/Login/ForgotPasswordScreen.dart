@@ -1,4 +1,4 @@
-// import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -11,10 +11,41 @@ class ForgotPasswordScreen extends StatefulWidget {
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final TextEditingController _emailController = TextEditingController();
   bool isLoading = false;
+  final PageController _pageController = PageController();
+  int _currentIndex = 0;
+
+  final List<String> _imagePaths = [
+    "assets/img/images.jpg",
+    "assets/img/image-18.png",
+    "assets/img/depositphotos_150990618-stock-photo-concept-of-online-food-ordering.jpg",
+  ];
+
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _startImageAutoSlide();
+  }
+
+  void _startImageAutoSlide() {
+    _timer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      if (_pageController.hasClients) {
+        _currentIndex++;
+        _pageController.animateToPage(
+          _currentIndex % _imagePaths.length, // Loop images
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
+  }
 
   @override
   void dispose() {
     _emailController.dispose();
+    _pageController.dispose();
+    _timer?.cancel();
     super.dispose();
   }
 
@@ -32,20 +63,15 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       isLoading = true;
     });
 
-    try {
-      // await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Password reset email sent.")),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: ${e.toString()}")),
-      );
-    } finally {
+    Future.delayed(const Duration(seconds: 2), () {
       setState(() {
         isLoading = false;
       });
-    }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Password reset email sent.")),
+      );
+    });
   }
 
   @override
@@ -56,7 +82,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // Full-screen Layout
           SizedBox(
             width: screenWidth,
             height: screenHeight,
@@ -66,9 +91,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 Expanded(
                   flex: 1,
                   child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: screenWidth * 0.1, // Responsive padding
-                    ),
+                    padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.1),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -84,9 +107,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         ),
                         const SizedBox(height: 25),
                         _buildTextField(
-                            controller: _emailController,
-                            hintText: "E-mail",
-                            icon: Icons.email),
+                          controller: _emailController,
+                          hintText: "E-mail",
+                          icon: Icons.email,
+                        ),
                         const SizedBox(height: 20),
                         SizedBox(
                           width: double.infinity,
@@ -104,66 +128,73 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                     style: TextStyle(fontSize: 16, color: Colors.white)),
                           ),
                         ),
-                        const SizedBox(height: 15),
-                        Center(
-                          child: GestureDetector(
-                            onTap: () {
-                              Navigator.pop(context); // Goes to the previous screen
-                            },
-                            child: const Text(
-                              "Back to Previous",
-                              style: TextStyle(
-                                  color: Colors.blue, decoration: TextDecoration.underline),
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   ),
                 ),
 
-                // Right Side - Welcome Panel
+                // Right Side - Welcome Panel with Swipeable Background
                 Expanded(
                   flex: 1,
-                  child: Container(
-                    width: screenWidth * 0.5,
-                    height: screenHeight,
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Color(0xFF8E2DE2), Color(0xFF4A00E0)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+                  child: Stack(
+                    children: [
+                      PageView.builder(
+                        controller: _pageController,
+                        onPageChanged: (index) {
+                          setState(() {
+                            _currentIndex = index;
+                          });
+                        },
+                        itemBuilder: (context, index) {
+                          return Image.asset(
+                            _imagePaths[index % _imagePaths.length], // Loop images infinitely
+                            width: screenWidth * 0.5,
+                            height: screenHeight,
+                            fit: BoxFit.cover,
+                          );
+                        },
                       ),
-                    ),
-                    child: const Center(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 50),
-                        child: Text(
-                          "Reset Your Password!\n\n"
-                          "Enter your registered email to receive a password reset link.",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
+                      Container(
+                        width: screenWidth * 0.5,
+                        height: screenHeight,
+                        color: Colors.black.withOpacity(0.3), // Dark overlay
+                        child: const Center(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 50),
+                            child: Text(
+                              "Reset Your Password!\n\n"
+                              "Enter your registered email to receive a password reset link.",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
 
-          // Back Arrow Button - Navigates to the previous screen
+          // Back Icon in the Top Left with Circular Background
           Positioned(
-            top: 40,
+            top: 40, // Adjust based on your layout
             left: 20,
             child: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white, size: 30),
-              onPressed: () {
-                Navigator.pop(context); // Goes back to the previous screen
-              },
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withAlpha(25), // Light grey transparent background
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.arrow_back_ios_new, size: 16, color: Colors.black),
+              ),
+              onPressed: () => Navigator.pop(context),
             ),
           ),
         ],
@@ -188,6 +219,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           borderSide: BorderSide.none,
         ),
       ),
+      textInputAction: TextInputAction.done, // Show "Done" or "Enter" key
+      onSubmitted: (value) => _resetPassword(), // Trigger reset on Enter key press
     );
   }
 }
