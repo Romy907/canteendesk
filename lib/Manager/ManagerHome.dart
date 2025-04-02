@@ -1,15 +1,14 @@
-// import 'package:canteen/Manager/ManagerManageMenu.dart';
-// import 'package:canteen/Manager/ManagerPaymentMethods.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 class ManagerHome extends StatefulWidget {
-
-  const ManagerHome({Key? key, })
-      : super(key: key);
+  const ManagerHome({
+    Key? key,
+  }) : super(key: key);
 
   @override
   _ManagerHomeState createState() => _ManagerHomeState();
@@ -67,8 +66,6 @@ class _ManagerHomeState extends State<ManagerHome>
     FlSpot(6, 25),
   ];
 
-  
-
   final List<Map<String, dynamic>> popularItems = [
     {
       "image": "assets/img/momo.jpeg",
@@ -121,6 +118,9 @@ class _ManagerHomeState extends State<ManagerHome>
     'Beverages'
   ];
   String _selectedCategory = 'All';
+
+  // Selected index for navigation rail
+  int _selectedIndex = 0;
 
   @override
   void initState() {
@@ -189,17 +189,88 @@ class _ManagerHomeState extends State<ManagerHome>
     }
   }
 
+  // Method to update selected index for navigation rail
+  void _onDestinationSelected(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth > 600) {
-            return _buildWideLayout();
-          } else {
-            return _buildNarrowLayout();
-          }
-        },
+      body: Row(
+        children: [
+          SizedBox(
+            width: 80,
+            child: NavigationRail(
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: _onDestinationSelected,
+              
+              
+              labelType: NavigationRailLabelType.all,
+              selectedIconTheme: IconThemeData(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              unselectedIconTheme: IconThemeData(
+                color: Colors.grey[600],
+              ),
+              selectedLabelTextStyle: TextStyle(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.bold,
+              ),
+              unselectedLabelTextStyle: TextStyle(
+                color: Colors.grey[600],
+              ),
+              destinations: const [
+                NavigationRailDestination(
+                  icon: Icon(Icons.home),
+                  label: Text('Home'),
+                ),
+                NavigationRailDestination(
+                  icon: Icon(Icons.report),
+                  label: Text('Reports'),
+                ),
+                NavigationRailDestination(
+                  icon: Icon(Icons.shopping_cart),
+                  label: Text('Orders'),
+                ),
+                NavigationRailDestination(
+                  icon: Icon(Icons.person),
+                  label: Text('Profile'),
+                ),
+                NavigationRailDestination(
+                  icon: Icon(Icons.restaurant_menu),
+                  label: Text('Manage Menu '),
+                ),
+                NavigationRailDestination(
+                  icon: Icon(Icons.payment),
+                  label: Text('Manage Payment '),
+                ),
+                NavigationRailDestination(
+                  icon: Icon(Icons.settings),
+                  label: Text('Settings'),
+                ),
+              ],
+            ),
+          ),
+          const VerticalDivider(
+            width: 2,
+            thickness: 2,
+            color: Colors.grey,
+          ),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                if (constraints.maxWidth > 600) {
+                  return _buildWideLayout();
+                } else {
+                  return _buildNarrowLayout();
+                }
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -215,13 +286,13 @@ class _ManagerHomeState extends State<ManagerHome>
               children: [
                 _buildDateSelector(),
                 const SizedBox(height: 20),
-                _isLoading ? _buildStatisticsShimmer() : _buildStatisticsCards(),
+                _isLoading
+                    ? _buildStatisticsShimmer()
+                    : _buildStatisticsCards(),
                 const SizedBox(height: 24),
                 _isLoading ? _buildChartsShimmer() : _buildCharts(),
                 const SizedBox(height: 24),
                 _buildPopularItemsSection(),
-                const SizedBox(height: 24),
-                _buildQuickActions(),
                 const SizedBox(height: 24),
               ],
             ),
@@ -242,13 +313,13 @@ class _ManagerHomeState extends State<ManagerHome>
               children: [
                 _buildDateSelector(),
                 const SizedBox(height: 20),
-                _isLoading ? _buildStatisticsShimmer() : _buildStatisticsCards(),
+                _isLoading
+                    ? _buildStatisticsShimmer()
+                    : _buildStatisticsCards(),
                 const SizedBox(height: 24),
                 _isLoading ? _buildChartsShimmer() : _buildCharts(),
                 const SizedBox(height: 24),
                 _buildPopularItemsSection(),
-                const SizedBox(height: 24),
-                _buildQuickActions(),
                 const SizedBox(height: 24),
               ],
             ),
@@ -265,7 +336,8 @@ class _ManagerHomeState extends State<ManagerHome>
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
-            DateFormat('EEEE, MMM d, yyyy').format(DateTime.parse("2025-03-06 17:34:01")),
+            DateFormat('EEEE, MMM d, yyyy')
+                .format(DateTime.parse("2025-03-06 17:34:01")),
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w500,
@@ -282,20 +354,28 @@ class _ManagerHomeState extends State<ManagerHome>
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
                 value: _selectedTimeRange,
-                icon: Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.grey[700]),
+                icon: Icon(Icons.keyboard_arrow_down,
+                    size: 20, color: Colors.grey[700]),
                 style: TextStyle(
                   color: Colors.grey[800],
                   fontWeight: FontWeight.w500,
                   fontSize: 14,
                 ),
-                items: _timeRanges.map((range) => DropdownMenuItem(value: range, child: Text(range))).toList(),
+                items: _timeRanges
+                    .map((range) =>
+                        DropdownMenuItem(value: range, child: Text(range)))
+                    .toList(),
                 onChanged: _updateTimeRange,
               ),
             ),
-          ).animate().fadeIn(duration: 300.ms).moveX(begin: 20, end: 0, duration: 400.ms, curve: Curves.easeOutQuad),
+          ).animate().fadeIn(duration: 300.ms).moveX(
+              begin: 20, end: 0, duration: 400.ms, curve: Curves.easeOutQuad),
         ],
       ),
-    ).animate().fadeIn(duration: 400.ms).moveY(begin: -10, end: 0, duration: 400.ms, curve: Curves.easeOutQuad);
+    )
+        .animate()
+        .fadeIn(duration: 400.ms)
+        .moveY(begin: -10, end: 0, duration: 400.ms, curve: Curves.easeOutQuad);
   }
 
   Widget _buildStatisticsShimmer() {
@@ -326,10 +406,22 @@ class _ManagerHomeState extends State<ManagerHome>
 
   Widget _buildStatisticsCards() {
     final List<LinearGradient> gradients = [
-      LinearGradient(colors: [Color(0xFF6448FE), Color(0xFF5FC6FF)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-      LinearGradient(colors: [Color(0xFF2ECE7B), Color(0xFF33D890)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-      LinearGradient(colors: [Color(0xFFFE9A37), Color(0xFFFFB566)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-      LinearGradient(colors: [Color(0xFFFF5182), Color(0xFFFF7B9E)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+      LinearGradient(
+          colors: [Color(0xFF6448FE), Color(0xFF5FC6FF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight),
+      LinearGradient(
+          colors: [Color(0xFF2ECE7B), Color(0xFF33D890)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight),
+      LinearGradient(
+          colors: [Color(0xFFFE9A37), Color(0xFFFFB566)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight),
+      LinearGradient(
+          colors: [Color(0xFFFF5182), Color(0xFFFF7B9E)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight),
     ];
 
     final List<IconData> icons = [
@@ -341,254 +433,86 @@ class _ManagerHomeState extends State<ManagerHome>
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: List.generate(4, (index) {
-      return Expanded(
-        child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        decoration: BoxDecoration(
-          gradient: gradients[index],
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-          BoxShadow(
-            color: gradients[index].colors.first.withAlpha(76),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withAlpha(51),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icons[index], color: Colors.white, size: 22),
-              ),
-              Row(
-              children: [
-                Icon(
-                trends[statistics.keys.elementAt(index)]! >= 0
-                  ? Icons.trending_up
-                  : Icons.trending_down,
-                color: Colors.white,
-                size: 16,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                '${trends[statistics.keys.elementAt(index)]!.abs().toStringAsFixed(1)}%',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
+        return Expanded(
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            decoration: BoxDecoration(
+              gradient: gradients[index],
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: gradients[index].colors.first.withAlpha(76),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
                 ),
               ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withAlpha(51),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child:
+                            Icon(icons[index], color: Colors.white, size: 22),
+                      ),
+                      Row(
+                        children: [
+                          Icon(
+                            trends[statistics.keys.elementAt(index)]! >= 0
+                                ? Icons.trending_up
+                                : Icons.trending_down,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${trends[statistics.keys.elementAt(index)]!.abs().toStringAsFixed(1)}%',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    statistics.keys.elementAt(index) == "Revenue"
+                        ? "₹${NumberFormat('#,###').format(statistics[statistics.keys.elementAt(index)])}"
+                        : statistics[statistics.keys.elementAt(index)]
+                            .toString(),
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    statistics.keys.elementAt(index),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white.withAlpha(229),
+                    ),
+                  ),
+                ],
               ),
-            ],
             ),
-            const SizedBox(height: 8),
-            Text(
-            statistics.keys.elementAt(index) == "Revenue"
-              ? "₹${NumberFormat('#,###').format(statistics[statistics.keys.elementAt(index)])}"
-              : statistics[statistics.keys.elementAt(index)].toString(),
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-            ),
-            Text(
-            statistics.keys.elementAt(index),
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: Colors.white.withAlpha(229),
-            ),
-            ),
-          ],
           ),
-        ),
-        ),
-      );
+        );
       }),
-    );
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: List.generate(2, (index) {
-            return Expanded(
-              child: Container(
-                margin: const EdgeInsets.only(right: 8),
-                decoration: BoxDecoration(
-                  gradient: gradients[index],
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: gradients[index].colors.first.withAlpha(76),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withAlpha(51),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(icons[index], color: Colors.white, size: 22),
-                          ),
-                          Row(
-                            children: [
-                              Icon(
-                                trends[statistics.keys.elementAt(index)]! >= 0
-                                    ? Icons.trending_up
-                                    : Icons.trending_down,
-                                color: Colors.white,
-                                size: 16,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${trends[statistics.keys.elementAt(index)]!.abs().toStringAsFixed(1)}%',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        statistics.keys.elementAt(index) == "Revenue"
-                            ? "₹${NumberFormat('#,###').format(statistics[statistics.keys.elementAt(index)])}"
-                            : statistics[statistics.keys.elementAt(index)].toString(),
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      Text(
-                        statistics.keys.elementAt(index),
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white.withAlpha(229),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: List.generate(2, (index) {
-            index += 2;
-            return Expanded(
-              child: Container(
-                margin: const EdgeInsets.only(right: 8),
-                decoration: BoxDecoration(
-                  gradient: gradients[index],
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: gradients[index].colors.first.withAlpha(76),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withAlpha(51),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(icons[index], color: Colors.white, size: 22),
-                          ),
-                          Row(
-                            children: [
-                              Icon(
-                                trends[statistics.keys.elementAt(index)]! >= 0
-                                    ? Icons.trending_up
-                                    : Icons.trending_down,
-                                color: Colors.white,
-                                size: 16,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${trends[statistics.keys.elementAt(index)]!.abs().toStringAsFixed(1)}%',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        statistics.keys.elementAt(index) == "Revenue"
-                            ? "₹${NumberFormat('#,###').format(statistics[statistics.keys.elementAt(index)])}"
-                            : statistics[statistics.keys.elementAt(index)].toString(),
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      Text(
-                        statistics.keys.elementAt(index),
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white.withAlpha(229),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }),
-        ),
-      ],
     );
   }
 
@@ -602,7 +526,8 @@ class _ManagerHomeState extends State<ManagerHome>
           child: Container(
             width: 180,
             height: 28,
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4)),
+            decoration: BoxDecoration(
+                color: Colors.white, borderRadius: BorderRadius.circular(4)),
           ),
         ),
         const SizedBox(height: 16),
@@ -614,7 +539,9 @@ class _ManagerHomeState extends State<ManagerHome>
                 highlightColor: Colors.grey[100]!,
                 child: Container(
                   height: 200,
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+                  decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16)),
                 ),
               ),
             ),
@@ -625,7 +552,9 @@ class _ManagerHomeState extends State<ManagerHome>
                 highlightColor: Colors.grey[100]!,
                 child: Container(
                   height: 200,
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+                  decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16)),
                 ),
               ),
             ),
@@ -641,26 +570,38 @@ class _ManagerHomeState extends State<ManagerHome>
       children: [
         Text(
           'Performance Trends',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey[800]),
-        ).animate().fadeIn(duration: 400.ms).moveX(begin: -20, end: 0, duration: 400.ms, curve: Curves.easeOutQuad),
-        const SizedBox(height: 16),
+          style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey[800]),
+        ).animate().fadeIn(duration: 400.ms).moveX(
+            begin: -20, end: 0, duration: 400.ms, curve: Curves.easeOutQuad),
+        const SizedBox(height: 18),
         Row(
           children: [
             Expanded(
               child: Container(
-                height: 200,
+                height: 300,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [BoxShadow(color: Colors.grey.withAlpha(25), blurRadius: 10, offset: const Offset(0, 4))],
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.grey.withAlpha(25),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4))
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Revenue (Last 7 Days)',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey[700]),
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey[700]),
                     ),
                     const SizedBox(height: 8),
                     Expanded(
@@ -669,14 +610,19 @@ class _ManagerHomeState extends State<ManagerHome>
                           gridData: FlGridData(show: false),
                           titlesData: FlTitlesData(
                             show: true,
-                            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                            rightTitles: AxisTitles(
+                                sideTitles: SideTitles(showTitles: false)),
+                            topTitles: AxisTitles(
+                                sideTitles: SideTitles(showTitles: false)),
                             bottomTitles: AxisTitles(
                               sideTitles: SideTitles(
                                 showTitles: true,
                                 reservedSize: 22,
                                 getTitlesWidget: (value, meta) {
-                                  const style = TextStyle(color: Color(0xff68737d), fontWeight: FontWeight.bold, fontSize: 10);
+                                  const style = TextStyle(
+                                      color: Color(0xff68737d),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 10);
                                   String text;
                                   switch (value.toInt()) {
                                     case 0:
@@ -692,7 +638,10 @@ class _ManagerHomeState extends State<ManagerHome>
                                       text = '';
                                       break;
                                   }
-                                  return SideTitleWidget(meta: meta, space: 4, child: Text(text, style: style));
+                                  return SideTitleWidget(
+                                      meta: meta,
+                                      space: 4,
+                                      child: Text(text, style: style));
                                 },
                               ),
                             ),
@@ -706,7 +655,8 @@ class _ManagerHomeState extends State<ManagerHome>
                               barWidth: 3,
                               isStrokeCapRound: true,
                               dotData: FlDotData(show: false),
-                              belowBarData: BarAreaData(show: true, color: Colors.blue.withAlpha(51)),
+                              belowBarData: BarAreaData(
+                                  show: true, color: Colors.blue.withAlpha(51)),
                             ),
                           ],
                         ),
@@ -714,18 +664,24 @@ class _ManagerHomeState extends State<ManagerHome>
                     ),
                   ],
                 ),
-              ).animate().fadeIn(duration: 600.ms, delay: 200.ms).slideX(begin: -0.2, end: 0, duration: 600.ms, curve: Curves.easeOutQuad),
+              ).animate().fadeIn(duration: 600.ms, delay: 200.ms).slideX(
+                  begin: -0.2,
+                  end: 0,
+                  duration: 600.ms,
+                  curve: Curves.easeOutQuad),
             ),
             const SizedBox(width: 16),
             Expanded(
               child: Container(
-                height: 200,
+                height: 300,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [BoxShadow(color: Colors.grey.withAlpha(25), 
-                                        blurRadius: 10,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withAlpha(25),
+                      blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
                   ],
@@ -748,8 +704,10 @@ class _ManagerHomeState extends State<ManagerHome>
                           gridData: FlGridData(show: false),
                           titlesData: FlTitlesData(
                             show: true,
-                            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                            rightTitles: AxisTitles(
+                                sideTitles: SideTitles(showTitles: false)),
+                            topTitles: AxisTitles(
+                                sideTitles: SideTitles(showTitles: false)),
                             bottomTitles: AxisTitles(
                               sideTitles: SideTitles(
                                 showTitles: true,
@@ -1141,106 +1099,4 @@ class _ManagerHomeState extends State<ManagerHome>
   //     );
   //   }
   // }
-
-  Widget _buildQuickActions() {
-    final List<Map<String, dynamic>> actions = [
-      {
-        'title': 'Manage Menu',
-        'icon': Icons.restaurant_menu,
-        'color': Colors.blue[700]!,
-      },
-      {
-        'title': 'Manage Payment',
-        'icon': Icons.money,
-        'color': Colors.blue[700]!,
-      },
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Quick Actions',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.grey[800],
-          ),
-        ).animate().fadeIn(delay: 900.ms, duration: 400.ms).moveX(
-            begin: -20, end: 0, duration: 400.ms, curve: Curves.easeOutQuad),
-        const SizedBox(height: 16),
-        _isLoading
-            ? _buildQuickActionsShimmer()
-            : _buildQuickActionsGrid(actions),
-
-        // Current date-time and user info footer
-      ],
-    );
-  }
-
-  Widget _buildQuickActionsGrid(List<Map<String, dynamic>> actions) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: actions.asMap().entries.map((entry) {
-        final index = entry.key;
-        final action = entry.value;
-
-        return InkWell(
-          //onTap: () => _handleActionTap(action),
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withAlpha(25),
-                  blurRadius: 5,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: action['color'].withAlpha(25),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    action['icon'],
-                    color: action['color'],
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  action['title'],
-                  style: TextStyle(
-                    color: Colors.grey[800],
-                    fontWeight: FontWeight.w500,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        )
-            .animate()
-            .fadeIn(delay: 1.seconds + (100.ms * index), duration: 400.ms)
-            .scale(
-                begin: const Offset(0.8, 0.8),
-                end: const Offset(1.0, 1.0),
-                duration: 300.ms,
-                curve: Curves.elasticOut)
-            .animate(
-                onPlay: (controller) => controller.repeat(reverse: true),
-                delay: 3.seconds)
-            .shimmer(duration: 1.seconds, color: action['color'].withAlpha(51));
-      }).toList(),
-    );
-  }
 }
-
