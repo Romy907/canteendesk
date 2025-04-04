@@ -1,8 +1,9 @@
 import 'dart:async';
+import 'package:canteendesk/Manager/ManagerScreen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:canteendesk/Login/ForgotPasswordScreen.dart';
-import 'package:canteendesk/Manager/ManagerHome.dart';
+// import 'package:canteendesk/Manager/ManagerHome.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -240,7 +241,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (email == "manageraccount@goatmail.uk" && password == "asdfg123") {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => ManagerHome()),
+          MaterialPageRoute(builder: (context) => ManagerScreen()),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(

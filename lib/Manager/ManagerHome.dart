@@ -1,3 +1,4 @@
+// import 'package:canteendesk/Manager/ManagerReport.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -6,9 +7,7 @@ import 'package:shimmer/shimmer.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 class ManagerHome extends StatefulWidget {
-  const ManagerHome({
-    Key? key,
-  }) : super(key: key);
+  const ManagerHome({Key? key,}) : super(key: key);
 
   @override
   _ManagerHomeState createState() => _ManagerHomeState();
@@ -190,90 +189,32 @@ class _ManagerHomeState extends State<ManagerHome>
   }
 
   // Method to update selected index for navigation rail
-  void _onDestinationSelected(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
+  // void _onDestinationSelected(int index) {
+  //   setState(() {
+  //     _selectedIndex = index;
+  //   });
+  //   if (index == 1) {
+  //     Navigator.of(context).push(
+  //          MaterialPageRoute(builder: (context) => ManagerReport()),
+  //         );
+  //   }
+  // }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Row(
-        children: [
-          SizedBox(
-            width: 80,
-            child: NavigationRail(
-              selectedIndex: _selectedIndex,
-              onDestinationSelected: _onDestinationSelected,
-              
-              
-              labelType: NavigationRailLabelType.all,
-              selectedIconTheme: IconThemeData(
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              unselectedIconTheme: IconThemeData(
-                color: Colors.grey[600],
-              ),
-              selectedLabelTextStyle: TextStyle(
-                color: Theme.of(context).colorScheme.primary,
-                fontWeight: FontWeight.bold,
-              ),
-              unselectedLabelTextStyle: TextStyle(
-                color: Colors.grey[600],
-              ),
-              destinations: const [
-                NavigationRailDestination(
-                  icon: Icon(Icons.home),
-                  label: Text('Home'),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(Icons.report),
-                  label: Text('Reports'),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(Icons.shopping_cart),
-                  label: Text('Orders'),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(Icons.person),
-                  label: Text('Profile'),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(Icons.restaurant_menu),
-                  label: Text('Manage Menu '),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(Icons.payment),
-                  label: Text('Manage Payment '),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(Icons.settings),
-                  label: Text('Settings'),
-                ),
-              ],
-            ),
-          ),
-          const VerticalDivider(
-            width: 2,
-            thickness: 2,
-            color: Colors.grey,
-          ),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                if (constraints.maxWidth > 600) {
-                  return _buildWideLayout();
-                } else {
-                  return _buildNarrowLayout();
-                }
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+ @override
+Widget build(BuildContext context) {
+  return Scaffold(
+    body: LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth > 600) {
+          return _buildWideLayout();
+        } else {
+          return _buildNarrowLayout();
+        }
+      },
+    ),
+  );
+}
 
   Widget _buildWideLayout() {
     return CustomScrollView(
@@ -1085,18 +1026,18 @@ class _ManagerHomeState extends State<ManagerHome>
     );
   }
 
-  // Method to handle action tap safely - prevents setState during build
-  // void _handleActionTap(Map<String, dynamic> action) {
-  //   if (action['title'] == 'Manage Menu') {
-  //     Navigator.push(
-  //       context,
-  //       MaterialPageRoute(builder: (context) => ManagerManageMenu()),
-  //     );
-  //   } else if (action['title'] == 'Manage Payment') {
-  //     Navigator.push(
-  //       context,
-  //       MaterialPageRoute(builder: (context) => ManagerPaymentMethods()),
-  //     );
-  //   }
-  // }
-}
+//   // Method to handle action tap safely - prevents setState during build
+//   // void _handleActionTap(Map<String, dynamic> action) {
+//   //   if (action['title'] == 'Manage Menu') {
+//   //     Navigator.push(
+//   //       context,
+//   //       MaterialPageRoute(builder: (context) => ManagerManageMenu()),
+//   //     );
+//   //   } else if (action['title'] == 'Manage Payment') {
+//   //     Navigator.push(
+//   //       context,
+//   //       MaterialPageRoute(builder: (context) => ManagerPaymentMethods()),
+//   //     );
+//   //   }
+//   // }
+ }
