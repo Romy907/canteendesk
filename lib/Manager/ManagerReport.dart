@@ -209,51 +209,67 @@ class _ManagerReportState extends State<ManagerReport> {
     );
   }
  Widget _buildReportContent() {
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildHeader()
+  return SingleChildScrollView(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildHeader()
             .animate()
             .fadeIn(duration: 600.ms)
             .slideY(begin: -0.2, end: 0),
-          const SizedBox(height: 20),
-          _buildChartSelector()
+        const SizedBox(height: 20),
+        _buildChartSelector()
             .animate()
             .fadeIn(delay: 200.ms, duration: 600.ms),
-          const SizedBox(height: 10),
-          _buildChart()
-            .animate()
-            .fadeIn(delay: 400.ms, duration: 800.ms)
-            .scale(begin: const Offset(0.95, 0.95), end: const Offset(1, 1)),
-          const SizedBox(height: 20),
-          _buildSummaryCards()
-            .animate()
-            .fadeIn(delay: 600.ms, duration: 600.ms),
-          const SizedBox(height: 30),
-          Text(
-            'Top Categories',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[800],
+        const SizedBox(height: 20),
+
+        // --- Side by side chart and top categories ---
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 3,
+              child: _buildChart()
+                  .animate()
+                  .fadeIn(delay: 400.ms, duration: 800.ms)
+                  .scale(begin: const Offset(0.95, 0.95), end: const Offset(1, 1)),
             ),
-          )
+            const SizedBox(width: 20),
+            Expanded(
+              flex: 2,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Top Categories',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                    ),
+                  )
+                      .animate()
+                      .fadeIn(delay: 800.ms, duration: 600.ms),
+                  const SizedBox(height: 16),
+                  _buildCategoryStats()
+                      .animate()
+                      .fadeIn(delay: 1000.ms, duration: 600.ms),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 30),
+        _buildSummaryCards(context)
             .animate()
-            .fadeIn(delay: 800.ms, duration: 600.ms),
-          const SizedBox(height: 16),
-          _buildCategoryStats()
-            .animate()
-            .fadeIn(delay: 1000.ms, duration: 600.ms),
-          const SizedBox(height: 30),
-          _buildReportActions()
-            .animate()
-            .fadeIn(delay: 1200.ms, duration: 600.ms)
-            .slideY(begin: 0.2, end: 0),
-        ],
-      ),
-    );
-  }
+            .fadeIn(delay: 1200.ms, duration: 600.ms),
+        const SizedBox(height: 30),
+       
+      ],
+    ),
+  );
+}
+
   
   Widget _buildHeader() {
     return Row(
@@ -374,24 +390,30 @@ class _ManagerReportState extends State<ManagerReport> {
   }
 
   Widget _buildChart() {
-    return Container(
-      height: 300,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withAlpha(25),
-            spreadRadius: 1,
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
+  return Center(
+    child: SizedBox(
+      width: 800, // Set your desired max width here
+      child: Container(
+        height: 450,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withAlpha(25),
+              spreadRadius: 1,
+              blurRadius: 6,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: _getSelectedChart(),
       ),
-      child: _getSelectedChart(),
-    );
-  }
+    ),
+  );
+}
+
 
   Widget _getSelectedChart() {
     switch (_selectedChartTypeIndex) {
@@ -594,7 +616,7 @@ class _ManagerReportState extends State<ManagerReport> {
     return PieChart(
       PieChartData(
         sectionsSpace: 2,
-        centerSpaceRadius: 40,
+        centerSpaceRadius: 70,
         sections: List.generate(
           categories.length,
           (index) => PieChartSectionData(
@@ -612,112 +634,162 @@ class _ManagerReportState extends State<ManagerReport> {
       ),
     );
   }
-  Widget _buildSummaryCards() {
-    final List<Map<String, dynamic>> summaries = [
-      {
-        'title': 'Total Sales',
-        'value': '11,600',
-        'change': '+8.2%',
-        'isPositive': true,
-        'icon': Icons.trending_up,
-      },
-      {
-        'title': 'Orders',
-        'value': '142',
-        'change': '+12.5%',
-        'isPositive': true,
-        'icon': Icons.shopping_bag,
-      },
-      {
-        'title': 'Avg. Order Value',
-        'value': 'Rs. 816',
-        'change': '-2.1%',
-        'isPositive': false,
-        'icon': Icons.attach_money,
-      },
-    ];
+Widget _buildSummaryCards(BuildContext context) {
+  final List<Map<String, dynamic>> summaries = [
+    {
+      'title': 'Total Sales',
+      'value': '11,600',
+      'change': '+8.2%',
+      'isPositive': true,
+      'icon': Icons.trending_up,
+    },
+    {
+      'title': 'Orders',
+      'value': '142',
+      'change': '+12.5%',
+      'isPositive': true,
+      'icon': Icons.shopping_bag,
+    },
+    {
+      'title': 'Avg. Order Value',
+      'value': 'Rs. 816',
+      'change': '-2.1%',
+      'isPositive': false,
+      'icon': Icons.attach_money,
+    },
+  ];
 
-    return SizedBox(
-      height: 100,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: summaries.length,
-        itemBuilder: (context, index) {
-          final item = summaries[index];
-          return Container(
-            width: MediaQuery.of(context).size.width * 0.42,
-            margin: EdgeInsets.only(right: index < summaries.length - 1 ? 12 : 0),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withAlpha(25),
-                  spreadRadius: 1,
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+  final List<Map<String, dynamic>> actions = [
+    {'icon': Icons.share, 'label': 'Share', 'color': Colors.green[700]!},
+    {'icon': Icons.download, 'label': 'Download', 'color': Colors.orange[700]!},
+  ];
+
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Summary Cards - scrollable if needed
+        Expanded(
+          child: SizedBox(
+            height: 130,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: summaries.length,
+              itemBuilder: (context, index) {
+                final item = summaries[index];
+                return Container(
+                  width: MediaQuery.of(context).size.width * 0.18,
+                  margin: EdgeInsets.only(right: index < summaries.length - 1 ? 12 : 0),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withAlpha(25),
+                        spreadRadius: 1,
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            item['title'],
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          Icon(
+                            item['icon'],
+                            color: Theme.of(context).primaryColor,
+                            size: 18,
+                          ),
+                        ],
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            item['value'],
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: item['isPositive']
+                                  ? Colors.green.withAlpha(25)
+                                  : Colors.red.withAlpha(25),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              item['change'],
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: item['isPositive']
+                                    ? Colors.green[700]
+                                    : Colors.red[700],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ).animate().scale(delay: (index * 200).ms, duration: 400.ms);
+              },
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      item['title'],
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                    Icon(
-                      item['icon'],
-                      color: Theme.of(context).primaryColor,
-                      size: 18,
-                    ),
-                  ],
+          ),
+        ),
+
+        const SizedBox(width: 16),
+
+        // Action Buttons
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: actions.asMap().entries.map((entry) {
+            int index = entry.key;
+            Map<String, dynamic> action = entry.value;
+
+            return Padding(
+              padding: EdgeInsets.only(bottom: index == 0 ? 60 : 0),
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  // Handle action
+                },
+                icon: Icon(action['icon']),
+                label: Text(action['label']),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: action['color'],
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  elevation: 2,
                 ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      item['value'],
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: item['isPositive']
-                            ? Colors.green.withAlpha(25)
-                            : Colors.red.withAlpha(25),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        item['change'],
-                        style: TextStyle(
-                          fontSize: 12,
-                          color:
-                              item['isPositive'] ? Colors.green[700] : Colors.red[700],
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ).animate().scale(delay: (index * 200).ms, duration: 400.ms);
-        },
-      ),
-    );
-  }
+              ).animate().fadeIn(delay: (index * 200).ms, duration: 400.ms)
+              .scale(begin: const Offset(0.8, 0.8), end: const Offset(1, 1)),
+            );
+          }).toList(),
+        )
+      ],
+    ),
+  );
+}
+
 
   Widget _buildCategoryStats() {
     return Column(
@@ -818,37 +890,5 @@ class _ManagerReportState extends State<ManagerReport> {
       }).toList(),
     );
   }
-  Widget _buildReportActions() {
-    final List<Map<String, dynamic>> actions = [
-      {'icon': Icons.share, 'label': 'Share', 'color': Colors.green[700]!},
-      {'icon': Icons.download, 'label': 'Download', 'color': Colors.orange[700]!},
-    ];
-    
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: actions.asMap().entries.map((entry) {
-        int index = entry.key;
-        Map<String, dynamic> action = entry.value;
-        
-        return ElevatedButton.icon(
-          onPressed: () {
-            // Handle action
-          },
-          icon: Icon(action['icon']),
-          label: Text(action['label']),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: action['color'],
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30),
-            ),
-            elevation: 2,
-          ),
-        ).animate().fadeIn(delay: (index * 200).ms, duration: 400.ms)
-        .scale(begin: const Offset(0.8, 0.8), end: const Offset(1, 1));
-      }).toList(),
-    );
-  }
-}
+ }
   
