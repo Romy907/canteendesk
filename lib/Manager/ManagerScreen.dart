@@ -1,3 +1,5 @@
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:canteendesk/Login/LoginScreen.dart';
 import 'package:canteendesk/Manager/ManagerOrders.dart';
 import 'package:canteendesk/Manager/ManagerPayment.dart';
 import 'package:canteendesk/Manager/ManagerProfile.dart';
@@ -76,7 +78,14 @@ class _ManagerScreenState extends State<ManagerScreen> {
         // Handle settings
         break;
       case 'logout':
-        // Handle logout
+        final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isLoggedIn', false); // Clear login state
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (Route<dynamic> route) => false, // Remove all routes
+      );// Handle logout
         break;
     }
   }

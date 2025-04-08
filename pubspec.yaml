@@ -72,7 +72,7 @@ flutter:
     - assets/img/image-18.png
     - assets/img/images.jpg
     - assets/img/depositphotos_150990618-stock-photo-concept-of-online-food-ordering.jpg
-
+    - assets/img/me.jpg
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 
