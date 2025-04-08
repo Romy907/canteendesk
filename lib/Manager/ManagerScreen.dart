@@ -19,7 +19,7 @@ class _ManagerScreenState extends State<ManagerScreen> {
      ManagerHome(),
      ManagerReport(),
      ManagerOrders(),
-     ManagerMenu(),
+     ManagerManageMenu(),
      ManagerPayment(),
      ManagerProfile(),
      ManagerSettings(),
