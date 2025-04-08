@@ -3,7 +3,7 @@ import 'package:canteendesk/Manager/ManagerScreen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:canteendesk/Login/ForgotPasswordScreen.dart';
-// import 'package:canteendesk/Manager/ManagerHome.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -217,39 +217,42 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+    
+     void _login() async {
+  String email = _emailController.text.trim();
+  String password = _passwordController.text.trim();
 
-  void _login() {
-    String email = _emailController.text.trim();
-    String password = _passwordController.text.trim();
-
-    if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter email and password")),
-      );
-      return;
-    }
-
-    setState(() {
-      isLoading = true;
-    });
-
-    Future.delayed(const Duration(seconds: 2), () {
-      setState(() {
-        isLoading = false;
-      });
-
-      if (email == "manageraccount@goatmail.uk" && password == "asdfg123") {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => ManagerScreen()),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Invalid email or password")),
-        );
-      }
-    });
+  if (email.isEmpty || password.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Please enter email and password")),
+    );
+    return;
   }
+
+  setState(() {
+    isLoading = true;
+  });
+
+  await Future.delayed(const Duration(seconds: 2));
+
+  setState(() {
+    isLoading = false;
+  });
+
+  if (email == "manageraccount@goatmail.uk" && password == "asdfg123") {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isLoggedIn', true); // Save login state
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => ManagerScreen()),
+    );
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Invalid email or password")),
+    );
+  }
+}
 
   Widget _buildTextField({
     required TextEditingController controller,

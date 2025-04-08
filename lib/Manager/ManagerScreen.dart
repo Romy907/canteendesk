@@ -1,7 +1,6 @@
 import 'package:canteendesk/Manager/ManagerOrders.dart';
 import 'package:canteendesk/Manager/ManagerPayment.dart';
 import 'package:canteendesk/Manager/ManagerProfile.dart';
-import 'package:canteendesk/Manager/ManagerSettings.dart';
 import 'package:flutter/material.dart';
 import 'ManagerHome.dart';
 import 'ManagerReport.dart';
@@ -21,14 +20,65 @@ class _ManagerScreenState extends State<ManagerScreen> {
      ManagerOrders(),
      ManagerManageMenu(),
      ManagerPayment(),
-     ManagerProfile(),
-     ManagerSettings(),
   ];
 
   void _onDestinationSelected(int index) {
     setState(() {
       _selectedIndex = index;
     });
+  }
+  void _showProfileMenu(Offset tapPosition) async {
+    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+
+    final selected = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        tapPosition.dx +40,
+        tapPosition.dy + 10,
+        overlay.size.width - (tapPosition.dx + 40),
+        overlay.size.height -( tapPosition.dy + 10),
+      ),
+      items: const [
+         PopupMenuItem<String>(
+          value: 'personal_information',
+          child: ListTile(
+            leading: Icon(Icons.person),
+            title: Text('Personal Information'),
+          ),
+        ),
+         PopupMenuDivider(),
+         PopupMenuItem<String>(
+          value: 'settings',
+          child: ListTile(
+            leading: Icon(Icons.settings),
+            title: Text('Settings'),
+          ),
+        ),
+         PopupMenuDivider(),
+         PopupMenuItem<String>(
+          value: 'logout',
+          child: ListTile(
+            leading: Icon(Icons.logout),
+            title: Text('Logout'),
+          ),
+        ),
+      ],
+    );
+
+    switch (selected) {
+      case 'personal_information':
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => ManagerProfile()),
+      );
+        break;
+      case 'settings':
+        // Handle settings
+        break;
+      case 'logout':
+        // Handle logout
+        break;
+    }
   }
 
   @override
@@ -55,8 +105,6 @@ class _ManagerScreenState extends State<ManagerScreen> {
                 NavigationRailDestination(icon: Icon(Icons.shopping_cart), label: Text('Orders')),
                 NavigationRailDestination(icon: Icon(Icons.restaurant_menu), label: Text('Manage Menu')),
                 NavigationRailDestination(icon: Icon(Icons.payment), label: Text('Manage Payment')),
-                NavigationRailDestination(icon: Icon(Icons.person), label: Text('Profile')),
-                NavigationRailDestination(icon: Icon(Icons.settings), label: Text('Settings')),
               ],
             ),
           ),
@@ -80,10 +128,15 @@ class _ManagerScreenState extends State<ManagerScreen> {
                         ),
                         child: Text("Canteen Manager", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                       ),
-                      IconButton(
-                        icon: Icon(Icons.notifications, color: Colors.black),
-                        onPressed: () {},
-                      ),
+                  GestureDetector(
+                     onTapDown: (TapDownDetails details) {
+                       _showProfileMenu(details.globalPosition);
+                     },
+                     child: const Padding(
+                       padding: EdgeInsets.symmetric(horizontal: 8.0),
+                       child: Icon(Icons.person, color: Colors.black),
+                    ),
+                  ),
                     ],
                   ),
                 ),
