@@ -1,4 +1,3 @@
-// import 'package:canteendesk/Manager/ManagerReport.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -136,11 +135,6 @@ class _ManagerHomeState extends State<ManagerHome>
         });
       }
     });
-
-    // FIXED: Schedule updating the pending order count after the first frame is built
-    // WidgetsBinding.instance.addPostFrameCallback((_) {
-    //   widget.updatePendingOrderCount(statistics['Pending'] as int);
-    // });
   }
 
   @override
@@ -186,18 +180,6 @@ class _ManagerHomeState extends State<ManagerHome>
       });
     }
   }
-
-  // Method to update selected index for navigation rail
-  // void _onDestinationSelected(int index) {
-  //   setState(() {
-  //     _selectedIndex = index;
-  //   });
-  //   if (index == 1) {
-  //     Navigator.of(context).push(
-  //          MaterialPageRoute(builder: (context) => ManagerReport()),
-  //         );
-  //   }
-  // }
 
   @override
  @override
