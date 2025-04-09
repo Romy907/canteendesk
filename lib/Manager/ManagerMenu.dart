@@ -164,33 +164,23 @@ class _ManagerManageMenuState extends State<ManagerManageMenu> {
   }
 
   Widget _buildDesktopLayout() {
-    return Row(
-      children: [
-        Expanded(
-          flex: 1,
-          child: Column(
-            children: [
-              _buildSearchBar(),
-              _buildCategorySelector(),
-              _buildItemCountHeader(),
-            ],
-          ),
-        ),
-        Expanded(
-          flex: 3,
-          child: _isGridView ? _buildGridView() : _buildListView(),
-        ),
-      ],
-    );
-  }
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _buildSearchBar(),
+      _buildCategorySelector(),
+      _buildItemCountHeader(),
+      Expanded(
+        child: _isGridView ? _buildGridView() : _buildListView(),
+      ),
+    ],
+  );
+}
 
   Widget _buildSearchBar() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       color: _primaryColor,
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1000),
           child: TextField(
             onChanged: (value) {
               setState(() {
@@ -221,66 +211,63 @@ class _ManagerManageMenuState extends State<ManagerManageMenu> {
               contentPadding: const EdgeInsets.symmetric(vertical: 0),
             ),
           ),
-        ),
-      ),
     );
   }
 
   Widget _buildCategorySelector() {
-    return Container(
-      height: 100,
-      decoration: BoxDecoration(
-        color: _primaryColor,
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(25),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth < 1000) {
-            return ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
-              itemCount: _categories.length,
-              itemBuilder: (context, index) {
-                final category = _categories[index];
-                final isSelected = _selectedCategory == category;
+  return Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    decoration: BoxDecoration(
+      color: _primaryColor,
+      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withAlpha(25),
+          blurRadius: 8,
+          offset: const Offset(0, 4),
+        ),
+      ],
+    ),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 1000) {
+          return ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: _categories.length,
+            itemBuilder: (context, index) {
+              final category = _categories[index];
+              final isSelected = _selectedCategory == category;
 
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: ChoiceChip(
-                    label: Text(category),
-                    selected: isSelected,
-                    onSelected: (selected) {
-                      if (selected) {
-                        setState(() {
-                          _selectedCategory = category;
-                        });
-                      }
-                    },
-                    backgroundColor: Colors.white.withAlpha(51),
-                    selectedColor: Colors.white,
-                    labelStyle: TextStyle(
-                      color: isSelected
-                          ? _primaryColor
-                          : const Color.fromARGB(255, 2, 2, 2),
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: ChoiceChip(
+                  label: Text(category),
+                  selected: isSelected,
+                  onSelected: (selected) {
+                    if (selected) {
+                      setState(() {
+                        _selectedCategory = category;
+                      });
+                    }
+                  },
+                  backgroundColor: Colors.white.withAlpha(51),
+                  selectedColor: Colors.white,
+                  labelStyle: TextStyle(
+                    color: isSelected ? _primaryColor : Colors.black,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                   ),
-                );
-              },
-            );
-          } else {
-            return Wrap(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+              );
+            },
+          );
+        } else {
+          return Align(
+            alignment: Alignment.centerLeft,
+            child: Wrap(
               spacing: 8,
               runSpacing: 8,
-              alignment: WrapAlignment.center,
               children: _categories.map((category) {
                 final isSelected = _selectedCategory == category;
                 return ChoiceChip(
@@ -296,20 +283,19 @@ class _ManagerManageMenuState extends State<ManagerManageMenu> {
                   backgroundColor: Colors.white.withAlpha(51),
                   selectedColor: Colors.white,
                   labelStyle: TextStyle(
-                    color: isSelected
-                        ? _primaryColor
-                        : const Color.fromARGB(255, 2, 2, 2),
+                    color: isSelected ? _primaryColor : Colors.black,
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                   ),
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                 );
               }).toList(),
-            );
-          }
-        },
-      ),
-    );
-  }
+            ),
+          );
+        }
+      },
+    ),
+  );
+}
 
   Widget _buildItemCountHeader() {
     final itemCount = _filteredMenuItems.length;
