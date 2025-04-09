@@ -21,7 +21,7 @@ class _ManagerScreenState extends State<ManagerScreen> {
      ManagerReport(),
      ManagerOrders(),
      ManagerManageMenu(),
-     ManagerPayment(),
+     ManagerPaymentMethods(),
   ];
 
   void _onDestinationSelected(int index) {
