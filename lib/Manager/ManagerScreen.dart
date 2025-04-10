@@ -1,6 +1,7 @@
+import 'package:canteendesk/Manager/ManagerOperatingHours.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:canteendesk/Login/LoginScreen.dart';
-import 'package:canteendesk/Manager/ManagerOrders.dart';
+import 'package:canteendesk/Manager/ManagerOrdersList.dart';
 import 'package:canteendesk/Manager/ManagerPayment.dart';
 import 'package:canteendesk/Manager/ManagerProfile.dart';
 import 'package:flutter/material.dart';
@@ -19,9 +20,10 @@ class _ManagerScreenState extends State<ManagerScreen> {
   final List<Widget> _screens = [
      ManagerHome(),
      ManagerReport(),
-     ManagerOrders(),
+     ManagerOrdersList(),
      ManagerManageMenu(),
      ManagerPaymentMethods(),
+    ManagerOperatingHours(),
   ];
 
   void _onDestinationSelected(int index) {
@@ -114,6 +116,7 @@ class _ManagerScreenState extends State<ManagerScreen> {
                 NavigationRailDestination(icon: Icon(Icons.shopping_cart), label: Text('Orders')),
                 NavigationRailDestination(icon: Icon(Icons.restaurant_menu), label: Text('Manage Menu')),
                 NavigationRailDestination(icon: Icon(Icons.payment), label: Text('Manage Payment')),
+                NavigationRailDestination(icon: Icon(Icons.timeline), label: Text('Manage Operaing Hours')),
               ],
             ),
           ),
