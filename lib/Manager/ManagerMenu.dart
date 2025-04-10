@@ -95,7 +95,9 @@ class _ManagerManageMenuState extends State<ManagerManageMenu> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: PreferredSize(
+      preferredSize: Size.fromHeight(40), 
+      child: AppBar(
         title: const Text(
           'Manage Menu Items',
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
@@ -124,6 +126,7 @@ class _ManagerManageMenuState extends State<ManagerManageMenu> {
             },
           ),
         ],
+      ),
       ),
       floatingActionButton: _isError
           ? null
