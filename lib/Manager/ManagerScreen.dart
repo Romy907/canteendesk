@@ -52,14 +52,6 @@ class _ManagerScreenState extends State<ManagerScreen> {
         ),
          PopupMenuDivider(),
          PopupMenuItem<String>(
-          value: 'settings',
-          child: ListTile(
-            leading: Icon(Icons.settings),
-            title: Text('Settings'),
-          ),
-        ),
-         PopupMenuDivider(),
-         PopupMenuItem<String>(
           value: 'logout',
           child: ListTile(
             leading: Icon(Icons.logout),
