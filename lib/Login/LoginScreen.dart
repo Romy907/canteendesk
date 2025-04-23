@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:canteendesk/Firebase/FirebaseManager.dart';
 import 'package:canteendesk/Manager/ManagerScreen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -217,42 +218,88 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
-    
-     void _login() async {
-  String email = _emailController.text.trim();
-  String password = _passwordController.text.trim();
 
-  if (email.isEmpty || password.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Please enter email and password")),
-    );
-    return;
+  void _login() async {
+    String email = _emailController.text.trim();
+    String password = _passwordController.text.trim();
+    if (email.isEmpty || password.isEmpty) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("Error"),
+          content: const Text("Please fill in all fields"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text("OK"),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    try {
+      setState(() {
+        isLoading = true;
+      });
+
+      Map<String, dynamic> result =
+          await FirebaseManager().login(email, password);
+
+      // Handle login result here
+      print("login " + result.toString());
+      print(result['status']);
+      print(result['role']);
+
+      if (result['status'] == 'success') {
+        String role = result['role'];
+        print('role: $role');
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setString('userRole', role);
+
+        if (role == 'student') {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text("Error"),
+              content: const Text("Student profile can only be accessed via the mobile application."),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text("OK"),
+                ),
+              ],
+            ),
+          );
+        } else if (role == 'manager') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => ManagerScreen()),
+          );
+        }
+      }
+    } catch (e) {
+      print("Error: $e");
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("Error"),
+          content: const Text("Login failed. Please try again."),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text("OK"),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
+    }
   }
-
-  setState(() {
-    isLoading = true;
-  });
-
-  await Future.delayed(const Duration(seconds: 2));
-
-  setState(() {
-    isLoading = false;
-  });
-
-  if (email == "manageraccount@goatmail.uk" && password == "asdfg123") {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isLoggedIn', true); // Save login state
-
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => ManagerScreen()),
-    );
-  } else {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Invalid email or password")),
-    );
-  }
-}
 
   Widget _buildTextField({
     required TextEditingController controller,

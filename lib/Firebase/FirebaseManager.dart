@@ -1,12 +1,15 @@
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_database/firebase_database.dart';
+import 'dart:convert';
+import 'package:canteendesk/API/Cred.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class FirebaseManager {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final String apiKey =
+      Cred.FIREBASE_WEB_API_KEY; // Replace with your Firebase Web API Key
+  final String databaseUrl = Cred.FIREBASE_DATABASE_URL; // No trailing slash
+
   Future<void> logout() async {
     try {
-      await _auth.signOut();
       SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.clear();
       print('User logged out successfully');
@@ -14,6 +17,7 @@ class FirebaseManager {
       print('An error occurred during logout: $e');
     }
   }
+
   Future<void> saveUserData(Map<String, dynamic> userData) async {
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -24,115 +28,185 @@ class FirebaseManager {
         return;
       }
 
-      String sanitizedEmail = email.replaceAll(RegExp(r'[.#$[\]]'), '');
-      DatabaseReference userRef = FirebaseDatabase.instance.ref().child('User').child(sanitizedEmail);
+      String sanitizedEmail = email.replaceAll(RegExp(r'[.#\$\\[\\]]'), '');
+      final url = Uri.parse('$databaseUrl/User/$sanitizedEmail.json');
+      final response = await http.patch(url, body: jsonEncode(userData));
 
-      await userRef.update(userData);
-
-      print('User data saved successfully');
+      if (response.statusCode == 200) {
+        print('User data saved successfully');
+      } else {
+        print('Failed to save user data: ${response.body}');
+      }
     } catch (e) {
       print('An error occurred while saving user data: $e');
     }
   }
-  Future<void> addUniversityDetails(String universityName, String stores) async {
+
+  Future<void> addUniversityDetails(
+      String universityName, String stores) async {
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
       String? email = prefs.getString('email');
-      
+
       if (email == null) {
         print('No email found in SharedPreferences');
         return;
       }
 
-      String sanitizedEmail = email.replaceAll(RegExp(r'[.#$[\]]'), '');
-      DatabaseReference userRef = FirebaseDatabase.instance.ref().child('User').child(sanitizedEmail);
+      String sanitizedEmail = email.replaceAll(RegExp(r'[.#\$\\[\\]]'), '');
+      final url = Uri.parse('$databaseUrl/User/$sanitizedEmail.json');
+      final response = await http.patch(url,
+          body: jsonEncode({
+            'selectedUniversity': universityName,
+            'stores': stores,
+          }));
 
-      await userRef.update({
-        'selectedUniversity': universityName,
-        'stores': stores,
-      });
-
-      print('University details added successfully');
+      if (response.statusCode == 200) {
+        print('University details added successfully');
+      } else {
+        print('Failed to add university details: ${response.body}');
+      }
     } catch (e) {
       print('An error occurred while adding university details: $e');
     }
   }
+
   Future<Map<String, dynamic>> login(String email, String password) async {
-    print('Login attempt with email: $email');
     try {
-      print('Login attempt with email: $email');
-      email = email.trim(); 
+      email = email.trim();
 
       if (email.isEmpty || !email.contains('@') || !email.contains('.')) {
-        print('Invalid email address: $email');
         return {
           'status': 'error',
           'message': 'Please enter a valid email address',
         };
       }
 
-      // Firebase Authentication
-      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      print('Firebase authentication successful for user: ${userCredential.user?.uid}');
+      final url = Uri.parse(
+          'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$apiKey');
+      final response = await http.post(url,
+          body: jsonEncode({
+            'email': email,
+            'password': password,
+            'returnSecureToken': true,
+          }));
 
-      // Sanitize email for Firebase Realtime Database
-      String sanitizedEmail = email.replaceAll(RegExp(r'[.#$[\]]'), '');
-      print('Sanitized email: $sanitizedEmail');
+      final responseData = jsonDecode(response.body);
 
-      // Fetch user data
-      print('Fetching user data from database for user: ${userCredential.user?.uid}');
-      DatabaseReference userRef =
-          FirebaseDatabase.instance.ref().child('User').child(sanitizedEmail);
-      DataSnapshot snapshot = await userRef.get();
+      if (response.statusCode != 200) {
+        return {
+          'status': 'error',
+          'message': responseData['error']['message'] ?? 'Login failed',
+        };
+      }
+      print(responseData.toString());
+      final idToken = responseData['idToken'];
+      final localId = responseData['localId'];
+      final sanitizedEmail = email.replaceAll(RegExp(r'[.#$\[\]]'), '');
+      print(idToken);
+      print(localId);
+      print(sanitizedEmail);
+
+      final dbUrl =
+          Uri.parse('$databaseUrl/User/$sanitizedEmail.json?auth=$idToken');
+      final dbResponse = await http.get(dbUrl);
+
+      if (dbResponse.statusCode != 200) {
+        return {
+          'status': 'error',
+          'message': 'Failed to fetch user data',
+        };
+      }
+
+      final userData = jsonDecode(dbResponse.body);
       SharedPreferences prefs = await SharedPreferences.getInstance();
-      Map<dynamic, dynamic> userData = snapshot.value as Map<dynamic, dynamic>;
       userData.forEach((key, value) async {
         await prefs.setString(key, value.toString());
       });
-      print('User data snapshot: ${snapshot.value}');
+      prefs.setString("refreshToken", responseData['refreshToken']);
+      prefs.setString('userId', localId);
+      prefs.setString('idToken', idToken);
 
-      if (snapshot.exists && snapshot.value != null) {
-        print('User data found in database for user: ${userCredential.user?.uid}');
-        return {
-          'status': 'success',
-          'message': 'Login successful',
-          'userId': userCredential.user?.uid,
-          'role': snapshot.child('role').value.toString(),
-        };
-      } else {
-        print('No user data found in database for user: ${userCredential.user?.uid}');
+      await prefs.setString('email', email);
+
+      final role = userData['role'];
+      if (role == 'student') {
+        await logout();
         return {
           'status': 'error',
-          'message': 'No user data found in database',
-          'userId': userCredential.user?.uid,
+          'message': 'Students are not allowed to log in',
         };
       }
-    } on FirebaseAuthException catch (e) {
-      String errorMessage;
-      if (e.code == 'invalid-email') {
-        errorMessage = 'Invalid email format';
-      } else if (e.code == 'user-not-found') {
-        errorMessage = 'User not found';
-      } else if (e.code == 'wrong-password') {
-        errorMessage = 'Incorrect password';
-      } else {
-        errorMessage = 'Login failed: ${e.message}';
-      }
-      print('FirebaseAuthException: $errorMessage');
+
       return {
-        'status': 'error',
-        'message': errorMessage,
+        'status': 'success',
+        'message': 'Login successful',
+        'userId': localId,
+        'role': role,
       };
     } catch (e) {
-      print('An unexpected error occurred: $e');
       return {
         'status': 'error',
         'message': 'An unexpected error occurred: $e',
       };
     }
   }
- 
+
+  Future<String?> refreshIdTokenAndSave() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // Get stored refresh token and timestamp
+    final storedRefreshToken = prefs.getString('refreshToken');
+    final lastRefreshTime = prefs.getInt('lastRefreshTime');
+
+    if (storedRefreshToken == null) {
+      print('No refresh token found');
+      return null;
+    }
+
+    // Check if the token was refreshed within the last hour (3600 seconds)
+    final currentTime = DateTime.now().millisecondsSinceEpoch;
+    if (lastRefreshTime != null && (currentTime - lastRefreshTime) < 3600000) {
+      // Return the stored idToken if it's still valid
+      final storedIdToken = prefs.getString('idToken');
+      if (storedIdToken != null) {
+        print('Using cached ID token');
+        return storedIdToken;
+      }
+    }
+
+    final url = Uri.parse(
+        'https://securetoken.googleapis.com/v1/token?key=$apiKey');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: {
+          'grant_type': 'refresh_token',
+          'refresh_token': storedRefreshToken,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final newIdToken = data['id_token'];
+        final newRefreshToken = data['refresh_token'];
+
+        // Save new refresh token, idToken, and last refresh time
+        await prefs.setString('refreshToken', newRefreshToken);
+        await prefs.setString('idToken', newIdToken);
+        await prefs.setInt('lastRefreshTime', currentTime);
+
+        print('Token refreshed successfully');
+        return newIdToken;
+      } else {
+        print('Failed to refresh token: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('Error while refreshing token: $e');
+      return null;
+    }
+  }
 }

@@ -1,33 +1,60 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'Login/LoginScreen.dart';
-import 'Manager/ManagerScreen.dart';
+import 'package:canteendesk/Login/LoginScreen.dart';
+import 'package:canteendesk/Manager/ManagerScreen.dart';
 
-void main() {
-  runApp(MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Skip Firebase initialization on Windows
+  if (!Platform.isWindows) {
+    // Only initialize Firebase for mobile/web if needed
+    // await Firebase.initializeApp(); // Uncomment if supporting Android/iOS
+  }
+
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  Future<bool> checkLoginStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool('isLoggedIn') ?? false;
-  }
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Canteen Desk',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(primarySwatch: Colors.deepPurple),
-      home: FutureBuilder<bool>(
-        future: checkLoginStatus(),
+      title: 'canteendesk',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+      ),
+      home: FutureBuilder(
+        future: SharedPreferences.getInstance(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Scaffold(
               body: Center(child: CircularProgressIndicator()),
             );
           } else {
-            return snapshot.data == true ? ManagerScreen() : LoginScreen();
+            final prefs = snapshot.data as SharedPreferences;
+            print('SharedPreferences: ${prefs.getKeys().map((key) => '$key: ${prefs.get(key)}').join(', ')}');
+            final role = prefs.getString('userRole');
+
+            if (role == 'student') {
+              return const Scaffold(
+                body: Center(
+                  child: Text(
+                    'Student profile can only be accessed via the mobile application.',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              );
+            } else if (role == 'manager') {
+              return  ManagerScreen();
+            } else {
+              return const LoginScreen();
+            }
           }
         },
       ),

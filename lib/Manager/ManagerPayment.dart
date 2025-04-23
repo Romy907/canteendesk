@@ -1,9 +1,99 @@
-import 'package:firebase_database/firebase_database.dart';
+import 'package:canteendesk/API/Cred.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+
+// API service class for handling HTTP requests
+class ApiService {
+  // Base URL of your REST API
+  static const String baseUrl = Cred.FIREBASE_DATABASE_URL; // No trailing slash
+  
+  // Get store UPI accounts
+  static Future<List<UPIDetails>> getUPIAccounts(String storeId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/stores/$storeId/upi_accounts'),
+      headers: {'Content-Type': 'application/json'},
+    );
+    
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = json.decode(response.body);
+      List<UPIDetails> upiAccounts = [];
+      
+      if (data.containsKey('upi_accounts')) {
+        for (var item in data['upi_accounts']) {
+          upiAccounts.add(UPIDetails.fromMap(item));
+        }
+      }
+      
+      return upiAccounts;
+    } else {
+      throw Exception('Failed to load UPI accounts: ${response.statusCode}');
+    }
+  }
+  
+  // Get payment settings
+  static Future<bool> getPaymentSettings(String storeId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/stores/$storeId/payment_settings'),
+      headers: {'Content-Type': 'application/json'},
+    );
+    
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = json.decode(response.body);
+      return data['accept_upi'] ?? true;
+    } else {
+      throw Exception('Failed to load payment settings: ${response.statusCode}');
+    }
+  }
+  
+  // Create UPI account
+  static Future<bool> createUPIAccount(String storeId, UPIDetails upiDetails) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/stores/$storeId/upi_accounts'),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode(upiDetails.toMap()),
+    );
+    
+    return response.statusCode == 201;
+  }
+  
+  // Update UPI account
+  static Future<bool> updateUPIAccount(String storeId, UPIDetails upiDetails) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/stores/$storeId/upi_accounts/${upiDetails.id}'),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode(upiDetails.toMap()),
+    );
+    
+    return response.statusCode == 200;
+  }
+  
+  // Delete UPI account
+  static Future<bool> deleteUPIAccount(String storeId, String accountId) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/stores/$storeId/upi_accounts/$accountId'),
+      headers: {'Content-Type': 'application/json'},
+    );
+    
+    return response.statusCode == 200;
+  }
+  
+  // Update payment settings
+  static Future<bool> updatePaymentSettings(String storeId, bool acceptUpi) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/stores/$storeId/payment_settings'),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({'accept_upi': acceptUpi}),
+    );
+    
+    return response.statusCode == 200;
+  }
+}
 
 // UPI Payment Configuration Model
 class UPIDetails {
@@ -27,7 +117,7 @@ class UPIDetails {
     this.upiApp,
   });
 
-  // Convert to a Map for Firebase
+  // Convert to a Map for API
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -41,7 +131,7 @@ class UPIDetails {
     };
   }
 
-  // Create from a Map from Firebase
+  // Create from a Map from API
   factory UPIDetails.fromMap(Map<String, dynamic> map) {
     return UPIDetails(
       id: map['id'] ?? const Uuid().v4(),
@@ -119,24 +209,23 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
         ),
       );
 
-      // Save to Firebase
+      // Save using API
       try {
-        await FirebaseDatabase.instance
-            .ref()
-            .child(id)
-            .child('upi_accounts')
-            .child(result.id)
-            .set(result.toMap());
-            
-        // Success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('UPI account added successfully'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
+        final success = await ApiService.createUPIAccount(id, result);
+        
+        if (success) {
+          // Success message
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('UPI account added successfully'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          );
+        } else {
+          throw Exception('Failed to save UPI details');
+        }
       } catch (e) {
         // Error message
         ScaffoldMessenger.of(context).showSnackBar(
@@ -197,24 +286,23 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
         ),
       );
 
-      // Update Firebase
+      // Update using API
       try {
-        await FirebaseDatabase.instance
-            .ref()
-            .child(id)
-            .child('upi_accounts')
-            .child(result.id)
-            .update(result.toMap());
-            
-        // Success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('UPI account updated successfully'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
+        final success = await ApiService.updateUPIAccount(id, result);
+        
+        if (success) {
+          // Success message
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('UPI account updated successfully'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          );
+        } else {
+          throw Exception('Failed to update UPI details');
+        }
       } catch (e) {
         // Error message
         ScaffoldMessenger.of(context).showSnackBar(
@@ -307,33 +395,28 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
         ),
       );
 
-      // Update Firebase
+      // Delete using API
       try {
-        await FirebaseDatabase.instance
-            .ref()
-            .child(id)
-            .child('upi_accounts')
-            .child(accountId)
-            .remove();
-            
-        if (isPrimary && _upiAccounts.isNotEmpty) {
-          await FirebaseDatabase.instance
-              .ref()
-              .child(id)
-              .child('upi_accounts')
-              .child(_upiAccounts.first.id)
-              .update({'isPrimary': true});
-        }
+        final success = await ApiService.deleteUPIAccount(id, accountId);
         
-        // Success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('UPI account deleted successfully'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
+        if (success) {
+          // If we need to update the primary account
+          if (isPrimary && _upiAccounts.isNotEmpty) {
+            await ApiService.updateUPIAccount(id, _upiAccounts.first);
+          }
+          
+          // Success message
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('UPI account deleted successfully'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          );
+        } else {
+          throw Exception('Failed to delete UPI account');
+        }
       } catch (e) {
         // Error message
         ScaffoldMessenger.of(context).showSnackBar(
@@ -357,16 +440,15 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
       }
     });
 
-    // Update Firebase
+    // Update using API
     try {
       final index = _upiAccounts.indexWhere((element) => element.id == accountId);
       if (index != -1) {
-        await FirebaseDatabase.instance
-            .ref()
-            .child(id)
-            .child('upi_accounts')
-            .child(accountId)
-            .update({'isActive': _upiAccounts[index].isActive});
+        final success = await ApiService.updateUPIAccount(id, _upiAccounts[index]);
+        
+        if (!success) {
+          throw Exception('Failed to update UPI account status');
+        }
       }
     } catch (e) {
       // Show error message on failure
@@ -413,15 +495,14 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
       ),
     );
 
-    // Update Firebase for all accounts
+    // Update all accounts using API
     try {
+      // Update each account
       for (var account in _upiAccounts) {
-        await FirebaseDatabase.instance
-            .ref()
-            .child(id)
-            .child('upi_accounts')
-            .child(account.id)
-            .update({'isPrimary': account.isPrimary});
+        final success = await ApiService.updateUPIAccount(id, account);
+        if (!success) {
+          throw Exception('Failed to update primary UPI account');
+        }
       }
       
       // Success message
@@ -460,7 +541,7 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
       CurvedAnimation(parent: _animationController, curve: Curves.easeIn)
     );
     
-    // Initialize Firebase and load data
+    // Initialize and load data
     _setIdFromPreference();
   }
   
@@ -494,58 +575,17 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
     });
     
     try {
-      // Listen for UPI accounts
-      FirebaseDatabase.instance
-          .ref()
-          .child(id)
-          .child('upi_accounts')
-          .onValue
-          .listen((event) {
-        final data = event.snapshot.value as Map<dynamic, dynamic>?;
-        
-        setState(() {
-          if (data != null) {
-            _upiAccounts = data.entries
-                .map((e) =>
-                    UPIDetails.fromMap(Map<String, dynamic>.from(e.value as Map)))
-                .toList();
-          } else {
-            _upiAccounts = [];
-          }
-          
-          if (_isLoading) {
-            _isLoading = false;
-            _animationController.forward();
-          }
-        });
-      }, onError: (error) {
-        setState(() {
-          _isLoading = false;
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading UPI accounts: ${error.toString()}'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      });
+      // Load UPI accounts using REST API
+      final accounts = await ApiService.getUPIAccounts(id);
       
-      // Listen for global UPI setting
-      FirebaseDatabase.instance
-          .ref()
-          .child(id)
-          .child('payment_settings')
-          .child('accept_upi')
-          .onValue
-          .listen((event) {
-        final data = event.snapshot.value as bool?;
-        if (data != null) {
-          setState(() {
-            _acceptUPI = data;
-          });
-        }
+      // Load payment settings using REST API
+      final acceptUpi = await ApiService.getPaymentSettings(id);
+      
+      setState(() {
+        _upiAccounts = accounts;
+        _acceptUPI = acceptUpi;
+        _isLoading = false;
+        _animationController.forward();
       });
     } catch (e) {
       setState(() {
@@ -648,18 +688,30 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
                           left: _acceptUPI ? 25 : 0,
                           top: 2.5,
                           child: GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _acceptUPI = !_acceptUPI;
-                              });
+                            onTap: () async {
+                              final newValue = !_acceptUPI;
                               
-                              // Update Firebase
-                              FirebaseDatabase.instance
-                                  .ref()
-                                  .child(id)
-                                  .child('payment_settings')
-                                  .child('accept_upi')
-                                  .set(_acceptUPI);
+                              // Update using API
+                              try {
+                                final success = await ApiService.updatePaymentSettings(id, newValue);
+                                
+                                if (success) {
+                                  setState(() {
+                                    _acceptUPI = newValue;
+                                  });
+                                } else {
+                                  throw Exception('Failed to update payment settings');
+                                }
+                              } catch (e) {
+                                // Show error message
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Failed to update payment settings. Please try again.'),
+                                    backgroundColor: Colors.red,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
                             },
                             child: Container(
                               width: 25,
@@ -751,18 +803,28 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
                       ElevatedButton.icon(
                         icon: Icon(Icons.toggle_on),
                         label: Text('Enable UPI Payments'),
-                        onPressed: () {
-                          setState(() {
-                            _acceptUPI = true;
-                          });
-                          
-                          // Update Firebase
-                          FirebaseDatabase.instance
-                              .ref()
-                              .child(id)
-                              .child('payment_settings')
-                              .child('accept_upi')
-                              .set(true);
+                        onPressed: () async {
+                          // Update using API
+                          try {
+                            final success = await ApiService.updatePaymentSettings(id, true);
+                            
+                            if (success) {
+                              setState(() {
+                                _acceptUPI = true;
+                              });
+                            } else {
+                              throw Exception('Failed to update payment settings');
+                            }
+                          } catch (e) {
+                            // Show error message
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Failed to enable UPI payments. Please try again.'),
+                                backgroundColor: Colors.red,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
                         },
                         style: ElevatedButton.styleFrom(
                           padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -1605,8 +1667,6 @@ class UPIAccountItem extends StatelessWidget {
   }
 }
 
-// QR Code Dialog has been integrated into UPIAccountItem class
-
 // Dialog for adding/editing UPI accounts
 class AddEditUPIDialog extends StatefulWidget {
   final UPIDetails? upiDetails;
@@ -1807,7 +1867,7 @@ class _AddEditUPIDialogState extends State<AddEditUPIDialog> with SingleTickerPr
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
-                    controller: _bankNameController,
+                                        controller: _bankNameController,
                     decoration: InputDecoration(
                       labelText: 'Bank Name (Optional)',
                       hintText: 'e.g. SBI, HDFC, ICICI',
@@ -1821,7 +1881,7 @@ class _AddEditUPIDialogState extends State<AddEditUPIDialog> with SingleTickerPr
                   const SizedBox(height: 16),
                   Text(
                     'UPI App:',
-                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 8),
                   Container(

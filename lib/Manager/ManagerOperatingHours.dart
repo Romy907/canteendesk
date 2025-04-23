@@ -1,8 +1,66 @@
-import 'package:firebase_database/firebase_database.dart';
+import 'package:canteendesk/API/Cred.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+
+// API service class for handling HTTP requests
+class ApiService {
+  // Base URL of your REST API
+  static const String baseUrl = Cred.FIREBASE_DATABASE_URL; // No trailing slash
+  
+  // Get store timings
+  static Future<Map<String, dynamic>> getStoreTimings(String storeId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/stores/$storeId/timings'),
+      headers: {'Content-Type': 'application/json'},
+    );
+    
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      throw Exception('Failed to load store timings: ${response.statusCode}');
+    }
+  }
+  
+  // Get store settings
+  static Future<Map<String, dynamic>> getStoreSettings(String storeId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/stores/$storeId/settings'),
+      headers: {'Content-Type': 'application/json'},
+    );
+    
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      throw Exception('Failed to load store settings: ${response.statusCode}');
+    }
+  }
+  
+  // Update store timings
+  static Future<bool> updateStoreTimings(String storeId, Map<String, dynamic> data) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/stores/$storeId/timings'),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode(data),
+    );
+    
+    return response.statusCode == 200;
+  }
+  
+  // Update store settings
+  static Future<bool> updateStoreSettings(String storeId, Map<String, dynamic> data) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/stores/$storeId/settings'),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode(data),
+    );
+    
+    return response.statusCode == 200;
+  }
+}
 
 class StoreTiming {
   final String day;
@@ -19,7 +77,7 @@ class StoreTiming {
     this.is24Hours = false,
   });
 
-  // Convert to a Map for Firebase
+  // Convert to a Map for REST API
   Map<String, dynamic> toMap() {
     return {
       'day': day,
@@ -32,7 +90,7 @@ class StoreTiming {
     };
   }
 
-  // Create from a Map from Firebase
+  // Create from a Map from REST API
   factory StoreTiming.fromMap(Map<String, dynamic> map) {
     return StoreTiming(
       day: map['day'],
@@ -125,7 +183,7 @@ class ManagerOperatingHoursState extends State<ManagerOperatingHours> with Singl
     _batchOpenTime = TimeOfDay(hour: 9, minute: 0);
     _batchCloseTime = TimeOfDay(hour: 18, minute: 0);
     
-    // Load data from Firebase
+    // Load data from API
     _loadStoreId();
   }
 
@@ -156,73 +214,53 @@ class ManagerOperatingHoursState extends State<ManagerOperatingHours> with Singl
         _isLoading = true;
       });
 
-      // Load global store open setting
-      FirebaseDatabase.instance
-          .ref()
-          .child(_storeId)
-          .child('store_settings')
-          .child('is_open')
-          .onValue
-          .listen((event) {
-        final data = event.snapshot.value as bool?;
-        
-        if (data != null) {
-          setState(() {
-            _storeOpen = data;
-          });
-        }
-      });
+      // Load global store open setting using REST API
+      final settingsResponse = await ApiService.getStoreSettings(_storeId);
+      
+      if (settingsResponse.containsKey('is_open')) {
+        setState(() {
+          _storeOpen = settingsResponse['is_open'];
+        });
+      }
 
-      // Load store timings
-      FirebaseDatabase.instance
-          .ref()
-          .child(_storeId)
-          .child('store_timings')
-          .onValue
-          .listen((event) {
-        final data = event.snapshot.value as Map<dynamic, dynamic>?;
+      // Load store timings using REST API
+      final timingsResponse = await ApiService.getStoreTimings(_storeId);
+      
+      if (timingsResponse.containsKey('timings')) {
+        final Map<String, dynamic> data = timingsResponse['timings'];
+        List<StoreTiming> timings = [];
         
-        if (data != null) {
-          List<StoreTiming> timings = [];
-          
-          for (String day in _days) {
-            if (data[day] != null) {
-              timings.add(StoreTiming.fromMap(Map<String, dynamic>.from(data[day] as Map)));
-            } else {
-              // Default timing if not set
-              timings.add(StoreTiming(
-                day: day,
-                isOpen: true,
-                openTime: TimeOfDay(hour: 9, minute: 0),
-                closeTime: TimeOfDay(hour: 18, minute: 0),
-              ));
-            }
+        for (String day in _days) {
+          if (data[day] != null) {
+            timings.add(StoreTiming.fromMap(data[day]));
+          } else {
+            // Default timing if not set
+            timings.add(StoreTiming(
+              day: day,
+              isOpen: true,
+              openTime: TimeOfDay(hour: 9, minute: 0),
+              closeTime: TimeOfDay(hour: 18, minute: 0),
+            ));
           }
-          
-          setState(() {
-            _storeTimings = timings;
-            _isLoading = false;
-            _animationController.forward();
-          });
-        } else {
-          setState(() {
-            _isLoading = false;
-            _animationController.forward();
-          });
         }
-      }, onError: (error) {
+        
+        setState(() {
+          _storeTimings = timings;
+          _isLoading = false;
+          _animationController.forward();
+        });
+      } else {
         setState(() {
           _isLoading = false;
+          _animationController.forward();
         });
-        
-        _showErrorSnackBar('Error loading store timings');
-      });
+      }
     } catch (e) {
       setState(() {
         _isLoading = false;
       });
       
-      _showErrorSnackBar('Failed to connect to the database');
+      _showErrorSnackBar('Error: ${e.toString()}');
     }
   }
 
@@ -263,40 +301,35 @@ class ManagerOperatingHoursState extends State<ManagerOperatingHours> with Singl
         ),
       );
 
-      // Save global store open setting
-      await FirebaseDatabase.instance
-          .ref()
-          .child(_storeId)
-          .child('store_settings')
-          .child('is_open')
-          .set(_storeOpen);
+      // Save global store open setting using REST API
+      await ApiService.updateStoreSettings(_storeId, {'is_open': _storeOpen});
 
-      // Save each day's timing
+      // Save each day's timing using REST API
       final Map<String, dynamic> timingsMap = {};
       
       for (StoreTiming timing in _storeTimings) {
         timingsMap[timing.day] = timing.toMap();
       }
       
-      await FirebaseDatabase.instance
-          .ref()
-          .child(_storeId)
-          .child('store_timings')
-          .set(timingsMap);
+      final result = await ApiService.updateStoreTimings(_storeId, {'timings': timingsMap});
 
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Store hours updated successfully'),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
+      if (result) {
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Store hours updated successfully'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      } else {
+        throw Exception('Failed to update store hours');
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to update store hours'),
+          content: Text('Failed to update store hours: ${e.toString()}'),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -1425,4 +1458,3 @@ Widget _buildTimePicker(
     }
   }
 }
-    
