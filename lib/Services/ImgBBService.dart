@@ -39,3 +39,7 @@ class ImgBBService {
     }
   }
 }
+
+class Cred {
+  static String imgBB = '';
+}
