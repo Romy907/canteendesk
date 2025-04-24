@@ -28,7 +28,8 @@ class FirebaseManager {
         return;
       }
 
-      String sanitizedEmail = email.replaceAll(RegExp(r'[.#\$\\[\\]]'), '');
+      String sanitizedEmail = email.replaceAll(RegExp(r'[.#\$[\]]'), '');
+      print('Sanitized email: $sanitizedEmail');
       final url = Uri.parse('$databaseUrl/User/$sanitizedEmail.json');
       final response = await http.patch(url, body: jsonEncode(userData));
 
@@ -207,6 +208,52 @@ class FirebaseManager {
     } catch (e) {
       print('Error while refreshing token: $e');
       return null;
+    }
+  }
+  Future<Map<String, dynamic>> changePassword(String newPassword) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final idToken = prefs.getString('idToken');
+
+      if (idToken == null) {
+        return {
+          'status': 'error',
+          'message': 'User is not logged in',
+        };
+      }
+
+      final url = Uri.parse(
+          'https://identitytoolkit.googleapis.com/v1/accounts:update?key=$apiKey');
+      final response = await http.post(
+        url,
+        body: jsonEncode({
+          'idToken': idToken,
+          'password': newPassword,
+          'returnSecureToken': true,
+        }),
+      );
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode != 200) {
+        return {
+          'status': 'error',
+          'message': responseData['error']['message'] ?? 'Password change failed',
+        };
+      }
+
+      // Update the idToken in SharedPreferences
+      await prefs.setString('idToken', responseData['idToken']);
+      print('Password changed successfully');
+      return {
+        'status': 'success',
+        'message': 'Password changed successfully',
+      };
+    } catch (e) {
+      return {
+        'status': 'error',
+        'message': 'An unexpected error occurred: $e',
+      };
     }
   }
 }

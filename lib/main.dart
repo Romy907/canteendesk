@@ -44,6 +44,9 @@ class MyApp extends StatelessWidget {
             );
           } else {
             final prefs = snapshot.data as SharedPreferences;
+            prefs.getKeys().forEach((key) {
+              print('$key: ${prefs.get(key)}');
+            });
             final role = prefs.getString('userRole');
 
             if (role == 'student') {

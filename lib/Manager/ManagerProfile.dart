@@ -1,8 +1,16 @@
+import 'package:canteendesk/Firebase/FirebaseManager.dart';
+import 'package:canteendesk/Services/ImgBBService.dart';
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 
 class ManagerProfile extends StatefulWidget {
+  final String userLogin;
+  
+  const ManagerProfile({Key? key, this.userLogin = "navin280123"}) : super(key: key);
+  
   @override
   _ManagerProfileState createState() => _ManagerProfileState();
 }
@@ -11,10 +19,14 @@ class _ManagerProfileState extends State<ManagerProfile> {
   bool isEditing = false;
   bool showSaveMessage = false;
   bool showPasswordMessage = false;
-  bool showLanguageMessage = false;
 
   File? _pickedImage;
+  String? _imagePath;
+  String? _imageUrl;
   final ImagePicker _picker = ImagePicker();
+  final TextEditingController _imageUrlController = TextEditingController();
+  bool _isImageFromUrl = false;
+  String _currentDateTime = "2025-04-24 12:15:47"; // Default value
 
   final currentPasswordController = TextEditingController();
   final newPasswordController = TextEditingController();
@@ -27,128 +39,336 @@ class _ManagerProfileState extends State<ManagerProfile> {
   final locationController = TextEditingController();
   final addressController = TextEditingController();
 
+  
   Future<void> _pickImage() async {
     final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
 
     if (pickedFile != null) {
       setState(() {
         _pickedImage = File(pickedFile.path);
+        _imagePath = pickedFile.path;
+        _isImageFromUrl = false;
       });
+      
+      // Upload the image and get the URL
+      final url = await ImgBBService().uploadImage(File(pickedFile.path));
+      
+      setState(() {
+        _imageUrl = url;
+      });
+      
+      // Save image info to SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      prefs.setString('profileImageUrl', url!); // Save the URL returned from upload
     }
+  }
+
+  void _setImageFromUrl() {
+    if (_imageUrlController.text.isNotEmpty) {
+      setState(() async {
+        final prefs = await SharedPreferences.getInstance();
+        _imageUrl = prefs.getString('profile_image_url') ?? _imageUrlController.text;
+        _isImageFromUrl = true;
+        _pickedImage = null;
+        _imagePath = null;
+      });
+      // Save image URL to SharedPreferences
+      _saveImageUrlToPrefs();
+    }
+  }
+
+  Future<void> _saveImageUrlToPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    prefs.setString('profileImageUrl', _imageUrl ?? '');
+;
+  }
+
+  void _updateCurrentDateTime() {
+    setState(() {
+      _currentDateTime = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+    });
   }
 
   bool isCurrentPasswordVisible = false;
   bool isNewPasswordVisible = false;
   bool isConfirmPasswordVisible = false;
 
-  String selectedLanguage = 'en';
   Map<String, String> savedInfo = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfileData();
+    _updateCurrentDateTime();
+  }
+
+  Future<void> _loadProfileData() async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    setState(() {
+      nameController.text = prefs.getString('name') ?? '';
+      roleController.text = prefs.getString('role') ?? '';
+      emailController.text = prefs.getString('email') ?? '';
+      phoneController.text = prefs.getString('phone') ?? '';
+      locationController.text = prefs.getString('location') ?? '';
+      addressController.text = prefs.getString('university') ?? '';
+      
+      _isImageFromUrl = prefs.getBool('is_image_from_url') ?? false;
+      _imageUrl = prefs.getString('profileImageUrl');
+      
+      if (!_isImageFromUrl) {
+        _imagePath = prefs.getString('profile_image_path');
+        if (_imagePath != null) {
+          _pickedImage = File(_imagePath!);
+        }
+      }
+      
+      if (_imageUrl != null) {
+        _imageUrlController.text = _imageUrl!;
+      }
+      
+      savedInfo = {
+        'Name': nameController.text,
+        'Role': roleController.text,
+        'Email': emailController.text,
+        'Phone': phoneController.text,
+        'Location': locationController.text,
+        'Address': addressController.text,
+      };
+    });
+  }
+
+  Future<void> _saveProfileData() async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    prefs.setString('name', nameController.text);
+    prefs.setString('role', roleController.text);
+    prefs.setString('email', emailController.text);
+    prefs.setString('phone', phoneController.text);
+    prefs.setString('location', locationController.text);
+    prefs.setString('address', addressController.text);
+    
+    // Save the current image source state
+    if (_imageUrl != null) {
+      prefs.setString('profile_image_url', _imageUrl!);
+      prefs.setBool('is_image_from_url', _isImageFromUrl);
+      
+      if (!_isImageFromUrl && _imagePath != null) {
+        prefs.setString('profile_image_path', _imagePath!);
+      } else {
+        prefs.remove('profile_image_path');
+      }
+    }
+
+    // Prepare user data to send
+    final userData = {
+      'name': nameController.text,
+      'role': roleController.text,
+      'email': emailController.text,
+      'phone': phoneController.text,
+      'location': locationController.text,
+      'address': addressController.text,
+      'profileImageUrl': _imageUrl,
+    };
+
+    // Call the saveUserData method
+    await FirebaseManager().saveUserData(userData);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF0F0F0), // Windows-like background color
       appBar: AppBar(
-        backgroundColor: const Color.fromARGB(255, 161, 159, 159),
+        backgroundColor: const Color(0xFF0078D7), // Windows blue
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Profile', style: TextStyle(color: Colors.black)),
+        title: const Text('User Profile', style: TextStyle(color: Colors.white)),
       ),
-      body: Stack(
+      body: Row(
         children: [
-          Row(
-            children: [
-              Container(
-               width: 360,
-               color:  const Color.fromARGB(255, 234, 229, 241), // Set the deep blue background here
-               child: Align(
-                  alignment: Alignment.topLeft,
-                    child: SingleChildScrollView(
-                    padding: const EdgeInsets.only(top: 80),
-                    child: Container(
-                      width: 300,
-                      margin: const EdgeInsets.only(left: 60),
+          // Left sidebar
+          Container(
+            width: 260,
+            color: const Color(0xFFE6E6E6), // Light gray sidebar
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(vertical: 30),
+                child: Column(
+                  children: [
+                    Stack(
+                      alignment: Alignment.bottomRight,
+                      children: [
+                        CircleAvatar(
+                          radius: 60,
+                          backgroundColor: Colors.grey.shade300,
+                          backgroundImage: _imageUrl != null
+                              ? NetworkImage(_imageUrl!)
+                              : _pickedImage != null
+                                  ? FileImage(_pickedImage!)
+                                  : null,
+                          child: (_imageUrl == null && _pickedImage == null)
+                              ? (nameController.text.isNotEmpty
+                                  ? Text(
+                                      nameController.text[0].toUpperCase(),
+                                      style: const TextStyle(
+                                        fontSize: 40,
+                                        color: Color(0xFF0078D7),
+                                      ),
+                                    )
+                                  : const Icon(Icons.person,
+                                      size: 40, color: Color(0xFF0078D7)))
+                              : null,
+                        ),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              border: Border.all(color: Colors.grey.shade300),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Camera icon
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.camera_alt,
+                                    size: 18,
+                                    color: Color(0xFF0078D7),
+                                  ),
+                                  onPressed: isEditing ? _pickImage : null,
+                                  tooltip: 'Choose picture',
+                                ),
+                                // Web URL icon
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.link,
+                                    size: 18,
+                                    color: Color(0xFF0078D7),
+                                  ),
+                                  onPressed: isEditing
+                                      ? () {
+                                          showDialog(
+                                            context: context,
+                                            builder: (context) => AlertDialog(
+                                              title: const Text('Enter Image URL'),
+                                              content: TextField(
+                                                controller: _imageUrlController,
+                                                decoration: const InputDecoration(
+                                                  hintText: 'https://example.com/image.jpg',
+                                                ),
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () => Navigator.of(context).pop(),
+                                                  child: const Text('Cancel'),
+                                                ),
+                                                TextButton(
+                                                  onPressed: () {
+                                                    _setImageFromUrl();
+                                                    Navigator.of(context).pop();
+                                                  },
+                                                  child: const Text('Set Image'),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        }
+                                      : null,
+                                  tooltip: 'Image from URL',
+                                ),
+                                // Delete icon
+                                if (_pickedImage != null || _imageUrl != null)
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.close,
+                                      size: 18,
+                                      color: Colors.red,
+                                    ),
+                                    onPressed: isEditing
+                                        ? () {
+                                            setState(() {
+                                              _pickedImage = null;
+                                              _imagePath = null;
+                                              _imageUrl = null;
+                                              _isImageFromUrl = false;
+                                            });
+                                          }
+                                        : null,
+                                    tooltip: 'Remove',
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    // User login and date display
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF7F7F7),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Center(
-                            child: Transform.translate(
-                                offset: const Offset(0, -20),
-                                child: Stack(
-                                  alignment: Alignment.bottomRight,
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 80,
-                                      backgroundColor:
-                                          Colors.deepPurple.shade100,
-                                      backgroundImage: _pickedImage != null
-                                          ? FileImage(_pickedImage!)
-                                          : null,
-                                      child: _pickedImage == null
-                                          ? (nameController.text.isNotEmpty
-                                              ? Text(
-                                                  nameController.text[0]
-                                                      .toUpperCase(),
-                                                  style: const TextStyle(
-                                                      fontSize: 40,
-                                                      color: Colors.black),
-                                                )
-                                              : const Icon(Icons.person,
-                                                  size: 40,
-                                                  color: Colors.black))
-                                          : null,
-                                    ),
-                                    Positioned(
-                                      bottom: 0,
-                                      right: 4,
-                                      child: Row(
-                                        children: [
-                                          // Camera icon
-                                          CircleAvatar(
-                                            backgroundColor: Colors.white,
-                                            radius: 14,
-                                            child: IconButton(
-                                              icon: const Icon(Icons.camera_alt,
-                                                  size: 14,
-                                                  color: Colors.black),
-                                              onPressed: _pickImage,
-                                              padding: EdgeInsets.zero,
-                                              constraints:
-                                                  const BoxConstraints(),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          // ❌ Remove icon
-                                          if (_pickedImage != null)
-                                            CircleAvatar(
-                                              backgroundColor: Colors.white,
-                                              radius: 14,
-                                              child: IconButton(
-                                                icon: const Icon(Icons.close,
-                                                    size: 14,
-                                                    color: Colors.red),
-                                                onPressed: () {
-                                                  setState(() {
-                                                    _pickedImage = null;
-                                                  });
-                                                },
-                                                padding: EdgeInsets.zero,
-                                                constraints:
-                                                    const BoxConstraints(),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                )),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.person_outline,
+                                size: 16,
+                                color: Color(0xFF555555),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Login: ${widget.userLogin}',
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 12),
-                          if (savedInfo.isNotEmpty)
-                            Column(
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.access_time,
+                                size: 16,
+                                color: Color(0xFF555555),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'UTC: $_currentDateTime',
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    // Display saved info
+                    if (!isEditing && savedInfo.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Card(
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: savedInfo.entries
                                   .where((entry) => entry.value.isNotEmpty)
@@ -156,228 +376,284 @@ class _ManagerProfileState extends State<ManagerProfile> {
                                 return Padding(
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 4),
-                                  child: Text(
-                                    entry.value,
-                                    style: const TextStyle(fontSize: 14),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '${entry.key}: ',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Text(
+                                          entry.value,
+                                          style: const TextStyle(fontSize: 14),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 );
                               }).toList(),
                             ),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: 260,
-                            child: OutlinedButton(
-                              onPressed: () {
-                                if (isEditing) {
-                                  setState(() {
-                                    savedInfo = {
-                                      'Name': nameController.text,
-                                      'Role': roleController.text,
-                                      'Email': emailController.text,
-                                      'Phone': phoneController.text,
-                                      'Location': locationController.text,
-                                      'Address': addressController.text,
-                                    };
-                                    isEditing = false;
-                                    showSaveMessage = true;
-                                  });
-
-                                  Future.delayed(const Duration(seconds: 3),
-                                      () {
-                                    if (mounted) {
-                                      setState(() {
-                                        showSaveMessage = false;
-                                      });
-                                    }
-                                  });
-                                } else {
-                                  setState(() {
-                                    isEditing = true;
-                                    showSaveMessage = false;
-                                  });
-                                }
-                              },
-                              style: OutlinedButton.styleFrom(
-                                side: BorderSide(color: Colors.grey.shade300),
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10)),
-                                backgroundColor:
-                                    const Color.fromARGB(255, 245, 245, 245),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 30, vertical: 14),
-                              ),
-                              child: Text(
-                                isEditing ? 'Save Profile' : 'Edit Profile',
-                                style: const TextStyle(
-                                  color: Colors.black87,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
                           ),
-                        ],
+                        ),
+                      ),
+                    const SizedBox(height: 24),
+                    // Edit/Save button
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          backgroundColor: const Color(0xFF0078D7),
+                          minimumSize: const Size.fromHeight(40),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        onPressed: () {
+                          if (isEditing) {
+                            _saveProfileData(); // Save to SharedPreferences
+                            setState(() {
+                              savedInfo = {
+                                'Name': nameController.text,
+                                'Role': roleController.text,
+                                'Email': emailController.text,
+                                'Phone': phoneController.text,
+                                'Location': locationController.text,
+                                'Address': addressController.text,
+                              };
+                              isEditing = false;
+                              showSaveMessage = true;
+                            });
+
+                            Future.delayed(const Duration(seconds: 3), () {
+                              if (mounted) {
+                                setState(() {
+                                  showSaveMessage = false;
+                                });
+                              }
+                            });
+                          } else {
+                            setState(() {
+                              isEditing = true;
+                              showSaveMessage = false;
+                            });
+                          }
+                        },
+                        child: Text(
+                          isEditing ? 'Save Profile' : 'Edit Profile',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
               ),
-              Expanded(
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 40, vertical: 40),
-                  child: SingleChildScrollView(
+            ),
+          ),
+          // Main content area
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(30),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.grey.withOpacity(0.1),
+                          spreadRadius: 1,
+                          blurRadius: 2,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Personal Information',
-                          style: TextStyle(
-                              fontSize: 20, fontWeight: FontWeight.bold),
+                        // Personal Information Section
+                        Row(
+                          children: [
+                            Icon(Icons.person,
+                                color: const Color(0xFF0078D7), size: 22),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Personal Information',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF333333),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 20),
+                        const Divider(color: Color(0xFFDDDDDD)),
+                        const SizedBox(height: 16),
                         Wrap(
                           spacing: 20,
                           runSpacing: 20,
                           children: [
                             SizedBox(
-                                width: 220,
-                                child: _buildField('Name', nameController)),
+                              width: 320,
+                              child: _buildField('Name', nameController),
+                            ),
                             SizedBox(
-                                width: 200,
-                                child: _buildField('Role', roleController)),
+                              width: 320,
+                              child: _buildField('Role', roleController),
+                            ),
                             SizedBox(
-                                width: 280,
-                                child: _buildField('Email', emailController)),
+                              width: 320,
+                              child: _buildField('Email', emailController),
+                            ),
                             SizedBox(
-                                width: 220,
-                                child: _buildField(
-                                    'Phone Number', phoneController)),
+                              width: 320,
+                              child: _buildField(
+                                  'Phone Number', phoneController),
+                            ),
                             SizedBox(
-                                width: 200,
-                                child: _buildField(
-                                    'Location', locationController)),
+                              width: 320,
+                              child: _buildField(
+                                  'Location', locationController),
+                            ),
                             SizedBox(
-                                width: 280,
-                                child:
-                                    _buildField('Address', addressController)),
+                              width: 320,
+                              child: _buildField('Address', addressController),
+                            ),
                           ],
                         ),
-                        const SizedBox(height: 40),
-                        const Text(
-                          'Change Password',
-                          style: TextStyle(
-                              fontSize: 20, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 10),
-                        const Text(
-                          'Your new password must be different from current password.',
-                          style: TextStyle(fontSize: 16, color: Colors.black),
-                        ),
-                        const SizedBox(height: 20),
-                        _buildPasswordField(
-                            'Current Password', currentPasswordController),
-                        _buildPasswordField(
-                            'New Password', newPasswordController),
-                        _buildPasswordField(
-                            'Confirm Password', confirmPasswordController),
-                        const SizedBox(height: 10),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: ElevatedButton(
-                            onPressed: isEditing
-                                ? () {
-                                    setState(() {
-                                      showPasswordMessage = true;
-                                    });
-
-                                    Future.delayed(const Duration(seconds: 2),
-                                        () {
-                                      if (mounted) {
-                                        setState(() {
-                                          showPasswordMessage = false;
-                                        });
-                                      }
-                                    });
-                                  }
-                                : null,
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 24, vertical: 12),
-                              backgroundColor:
-                                  const Color.fromARGB(255, 200, 211, 230),
-                            ),
-                            child: const Text(
-                              'Update Password',
-                              style: TextStyle(
-                                  fontSize: 14, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 40),
-                        const Text(
-                          'Change Language',
-                          style: TextStyle(
-                              fontSize: 20, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 10),
-                        const Text(
-                          'Select your preferred language for the interface.',
-                          style: TextStyle(fontSize: 16, color: Colors.black),
-                        ),
-                        const SizedBox(height: 20),
-                        _buildLanguageTile('English', 'English',
-                            'assets/img/us_image.png', 'en'),
-                        const SizedBox(height: 10),
-                        _buildLanguageTile('Hindi', 'हिंदी',
-                            'assets/img/india_image.png', 'hi'),
                       ],
                     ),
                   ),
-                ),
+                  const SizedBox(height: 24),
+                  // Password Section
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.grey.withOpacity(0.1),
+                          spreadRadius: 1,
+                          blurRadius: 2,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                        Row(
+                          children: [
+                          Icon(Icons.lock,
+                            color: const Color(0xFF0078D7), size: 22),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Change Password',
+                            style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF333333),
+                            ),
+                          ),
+                          ],
+                        ),
+                        const Divider(color: Color(0xFFDDDDDD)),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Your new password must be different from current password.',
+                          style: TextStyle(fontSize: 14, color: Colors.grey),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildPasswordField(
+                          'Current Password', currentPasswordController),
+                        _buildPasswordField(
+                          'New Password', newPasswordController),
+                        _buildPasswordField(
+                          'Confirm Password', confirmPasswordController),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: isEditing
+                            ? () async {
+                              if (newPasswordController.text ==
+                                confirmPasswordController.text) {
+                              await FirebaseManager().changePassword(
+                                newPasswordController.text);
+                              setState(() {
+                                showPasswordMessage = true;
+                              });
+
+                              Future.delayed(const Duration(seconds: 2),
+                                () {
+                                if (mounted) {
+                                setState(() {
+                                  showPasswordMessage = false;
+                                });
+                                }
+                              });
+                              } else {
+                              // Handle password mismatch
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                content: Text(
+                                  'New password and confirm password do not match.'),
+                                ),
+                              );
+                              }
+                            }
+                            : null,
+                          style: ElevatedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          backgroundColor: const Color(0xFF0078D7),
+                          disabledBackgroundColor: Colors.grey.shade300,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 10),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          ),
+                          child: const Text(
+                          'Update Password',
+                          style: TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-          if (showSaveMessage)
-            Positioned(
-              bottom: 20, // Adjust the position from top
-              left: 20, // Move the message to the left layout
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: const Text(
-                  'Profile successfully saved!!',
-                  style: TextStyle(color: Colors.black, fontSize: 16),
-                ),
-              ),
-            ),
-          if (showPasswordMessage)
-            Positioned(
-              bottom: 20,
-              right: 620,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: const Text(
-                  'Password updated successfully!!',
-                  style: TextStyle(color: Colors.black, fontSize: 16),
-                ),
-              ),
-            ),
-          if (showLanguageMessage)
-            Positioned(
-              bottom: 20,
-              right: 620,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: const Text(
-                  'Language changed successfully!!',
-                  style: TextStyle(color: Colors.black, fontSize: 16),
-                ),
-              ),
-            ),
         ],
       ),
+      // Notification messages
+      bottomSheet: showSaveMessage || showPasswordMessage
+          ? Container(
+              width: double.infinity,
+              color: const Color(0xFF0078D7),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Text(
+                showPasswordMessage
+                    ? 'Password updated successfully!'
+                    : 'Profile successfully saved!',
+                style: const TextStyle(color: Colors.white),
+                textAlign: TextAlign.center,
+              ),
+            )
+          : null,
     );
   }
 
@@ -410,21 +686,31 @@ class _ManagerProfileState extends State<ManagerProfile> {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: SizedBox(
-        width: 450,
-        child: TextField(
-          controller: controller,
-          obscureText: !isVisible,
-          enabled: isEditing,
-          decoration: InputDecoration(
-            labelText: label,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            suffixIcon: IconButton(
-              icon: Icon(isVisible ? Icons.visibility : Icons.visibility_off),
-              onPressed: isEditing ? toggleVisibility : null,
+      child: TextField(
+        controller: controller,
+        obscureText: !isVisible,
+        enabled: isEditing,
+        style: const TextStyle(fontSize: 14),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(
+            color: isEditing ? const Color(0xFF0078D7) : Colors.grey,
+          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(4)),
+          focusedBorder: const OutlineInputBorder(
+            borderSide: BorderSide(color: Color(0xFF0078D7), width: 2),
+          ),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          filled: !isEditing,
+          fillColor: !isEditing ? Colors.grey.shade100 : Colors.transparent,
+          suffixIcon: IconButton(
+            icon: Icon(
+              isVisible ? Icons.visibility : Icons.visibility_off,
+              color: isEditing ? const Color(0xFF0078D7) : Colors.grey,
+              size: 20,
             ),
+            onPressed: isEditing ? toggleVisibility : null,
           ),
         ),
       ),
@@ -432,64 +718,23 @@ class _ManagerProfileState extends State<ManagerProfile> {
   }
 
   Widget _buildField(String label, TextEditingController controller) {
-  return TextField(
-    controller: controller,
-    enabled: isEditing,
-    style: TextStyle(
-      color: isEditing ? Colors.black : Colors.black, // Can customize differently if needed
-    ),
-    decoration: InputDecoration(
-      labelText: label,
-      labelStyle: const TextStyle(color: Colors.grey),
-      border: const OutlineInputBorder(),
-      // Optional: make the background a little different in non-edit mode
-      filled: !isEditing,
-      fillColor: !isEditing ? const Color.fromARGB(255, 245, 245, 245) : null,
-    ),
-  );
-}
-
-
-  Widget _buildLanguageTile(
-      String title, String subtitle, String iconPath, String code) {
-    return SizedBox(
-      width: 450,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        decoration: BoxDecoration(
-          color: Colors.grey[100],
-          border: Border.all(color: Colors.grey.shade400),
-          borderRadius: BorderRadius.circular(10),
+    return TextField(
+      controller: controller,
+      enabled: isEditing,
+      style: const TextStyle(fontSize: 14),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(
+          color: isEditing ? const Color(0xFF0078D7) : Colors.grey,
         ),
-        child: ListTile(
-          dense: true,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          leading: Image.asset(iconPath, width: 24),
-          title: Text(title, style: const TextStyle(fontSize: 14)),
-          subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-          trailing: IgnorePointer(
-            ignoring: !isEditing,
-            child: Radio<String>(
-              value: code,
-              groupValue: selectedLanguage,
-              onChanged: (value) {
-                setState(() {
-                  selectedLanguage = value!;
-                  showLanguageMessage = true;
-                });
-
-                Future.delayed(const Duration(seconds: 3), () {
-                  if (mounted) {
-                    setState(() {
-                      showLanguageMessage = false;
-                    });
-                  }
-                });
-              },
-            ),
-          ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(4)),
+        focusedBorder: const OutlineInputBorder(
+          borderSide: BorderSide(color: Color(0xFF0078D7), width: 2),
         ),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        filled: !isEditing,
+        fillColor: !isEditing ? Colors.grey.shade100 : Colors.transparent,
       ),
     );
   }
