@@ -16,21 +16,28 @@ class ManagerScreen extends StatefulWidget {
 
 class _ManagerScreenState extends State<ManagerScreen> {
   int _selectedIndex = 0;
-
-  final List<Widget> _screens = [
-     ManagerHome(),
-     ManagerReport(),
-     ManagerOrderList(),
-     ManagerManageMenu(),
-     ManagerPaymentMethods(),
-    ManagerOperatingHours(),
-  ];
+  late List<Widget> _screens;
+  
+  @override
+  void initState() {
+    super.initState();
+    // Initialize screens once to preserve their state
+    _screens = [
+      ManagerHome(),
+      ManagerReport(),
+      ManagerOrderList(),
+      ManagerManageMenu(),
+      ManagerPaymentMethods(),
+      ManagerOperatingHours(),
+    ];
+  }
 
   void _onDestinationSelected(int index) {
     setState(() {
       _selectedIndex = index;
     });
   }
+  
   void _showProfileMenu(Offset tapPosition) async {
     final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
 
@@ -144,7 +151,13 @@ class _ManagerScreenState extends State<ManagerScreen> {
                     ],
                   ),
                 ),
-                Expanded(child: _screens[_selectedIndex]),
+                // Using IndexedStack to preserve the state of each tab
+                Expanded(
+                  child: IndexedStack(
+                    index: _selectedIndex,
+                    children: _screens,
+                  ),
+                ),
               ],
             ),
           ),
@@ -153,4 +166,3 @@ class _ManagerScreenState extends State<ManagerScreen> {
     );
   }
 }
-
