@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:canteendesk/Login/LoginScreen.dart';
@@ -12,7 +13,13 @@ void main() async {
     // Only initialize Firebase for mobile/web if needed
     // await Firebase.initializeApp(); // Uncomment if supporting Android/iOS
   }
-
+  // doWhenWindowReady(() {
+  //   // const initialSize = Size(600, 450);
+  //   // appWindow.minSize = initialSize;
+  //   appWindow.size = Size.infinite;
+  //   appWindow.alignment = Alignment.center;
+  //   appWindow.show();
+  // });
   runApp(const MyApp());
 }
 
@@ -37,7 +44,6 @@ class MyApp extends StatelessWidget {
             );
           } else {
             final prefs = snapshot.data as SharedPreferences;
-            print('SharedPreferences: ${prefs.getKeys().map((key) => '$key: ${prefs.get(key)}').join(', ')}');
             final role = prefs.getString('userRole');
 
             if (role == 'student') {

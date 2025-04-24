@@ -1,99 +1,12 @@
 import 'package:canteendesk/API/Cred.dart';
+import 'package:canteendesk/Firebase/FirebaseManager.dart';
+import 'package:canteendesk/Services/UPIPaymentManager.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-
-// API service class for handling HTTP requests
-class ApiService {
-  // Base URL of your REST API
-  static const String baseUrl = Cred.FIREBASE_DATABASE_URL; // No trailing slash
-  
-  // Get store UPI accounts
-  static Future<List<UPIDetails>> getUPIAccounts(String storeId) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/stores/$storeId/upi_accounts'),
-      headers: {'Content-Type': 'application/json'},
-    );
-    
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> data = json.decode(response.body);
-      List<UPIDetails> upiAccounts = [];
-      
-      if (data.containsKey('upi_accounts')) {
-        for (var item in data['upi_accounts']) {
-          upiAccounts.add(UPIDetails.fromMap(item));
-        }
-      }
-      
-      return upiAccounts;
-    } else {
-      throw Exception('Failed to load UPI accounts: ${response.statusCode}');
-    }
-  }
-  
-  // Get payment settings
-  static Future<bool> getPaymentSettings(String storeId) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/stores/$storeId/payment_settings'),
-      headers: {'Content-Type': 'application/json'},
-    );
-    
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> data = json.decode(response.body);
-      return data['accept_upi'] ?? true;
-    } else {
-      throw Exception('Failed to load payment settings: ${response.statusCode}');
-    }
-  }
-  
-  // Create UPI account
-  static Future<bool> createUPIAccount(String storeId, UPIDetails upiDetails) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/stores/$storeId/upi_accounts'),
-      headers: {'Content-Type': 'application/json'},
-      body: json.encode(upiDetails.toMap()),
-    );
-    
-    return response.statusCode == 201;
-  }
-  
-  // Update UPI account
-  static Future<bool> updateUPIAccount(String storeId, UPIDetails upiDetails) async {
-    final response = await http.put(
-      Uri.parse('$baseUrl/stores/$storeId/upi_accounts/${upiDetails.id}'),
-      headers: {'Content-Type': 'application/json'},
-      body: json.encode(upiDetails.toMap()),
-    );
-    
-    return response.statusCode == 200;
-  }
-  
-  // Delete UPI account
-  static Future<bool> deleteUPIAccount(String storeId, String accountId) async {
-    final response = await http.delete(
-      Uri.parse('$baseUrl/stores/$storeId/upi_accounts/$accountId'),
-      headers: {'Content-Type': 'application/json'},
-    );
-    
-    return response.statusCode == 200;
-  }
-  
-  // Update payment settings
-  static Future<bool> updatePaymentSettings(String storeId, bool acceptUpi) async {
-    final response = await http.put(
-      Uri.parse('$baseUrl/stores/$storeId/payment_settings'),
-      headers: {'Content-Type': 'application/json'},
-      body: json.encode({'accept_upi': acceptUpi}),
-    );
-    
-    return response.statusCode == 200;
-  }
-}
 
 // UPI Payment Configuration Model
 class UPIDetails {
@@ -117,7 +30,7 @@ class UPIDetails {
     this.upiApp,
   });
 
-  // Convert to a Map for API
+  // Convert to a Map for Firebase
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -131,7 +44,7 @@ class UPIDetails {
     };
   }
 
-  // Create from a Map from API
+  // Create from a Map from Firebase
   factory UPIDetails.fromMap(Map<String, dynamic> map) {
     return UPIDetails(
       id: map['id'] ?? const Uuid().v4(),
@@ -153,15 +66,38 @@ class ManagerPaymentMethods extends StatefulWidget {
   State<ManagerPaymentMethods> createState() => ManagerPaymentMethodsState();
 }
 
-class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with SingleTickerProviderStateMixin {
+class ManagerPaymentMethodsState extends State<ManagerPaymentMethods>
+    with SingleTickerProviderStateMixin {
   List<UPIDetails> _upiAccounts = [];
-  String id = '';
+  UPIDetails? _selectedAccount;
+  String storeId = '';
   bool _acceptUPI = true; // Global switch to enable/disable UPI payment
   bool _isLoading = true; // Track loading state
+
+  // REST API client
+  late UPIPaymentManager _apiClient;
+
+  // Set in initState after getting store ID from preferences
+  Future<void> _initializeApiClient() async {
+    // These would typically come from your configuration or auth system
+    final baseUrl =
+        Cred.FIREBASE_DATABASE_URL; // Firebase URL without trailing slash
+    final idToken = await FirebaseManager()
+        .refreshIdTokenAndSave(); // You'd get this from your authentication system
+
+    _apiClient = UPIPaymentManager(
+      baseUrl: baseUrl,
+      idToken: idToken ?? '', // Provide a fallback in case idToken is null
+      storeId: storeId,
+    );
+  }
 
   // Animation controller for smooth transitions
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
+
+  // Keyboard shortcuts
+  final Map<ShortcutActivator, VoidCallback> _shortcuts = {};
 
   // Add a new UPI account
   void _addUPIAccount() async {
@@ -183,13 +119,38 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
           }
         }
         _upiAccounts.add(result);
+        _selectedAccount = result; // Select the newly added account
       });
 
       // Show loading indicator
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
+      _showSnackBar('Saving UPI details...', Colors.blue.shade700);
+
+      // Save to Firebase using REST API
+      try {
+        await _apiClient.addUPIAccount(result);
+
+        // If this is a primary account, update all others
+        if (result.isPrimary && _upiAccounts.length > 1) {
+          await _apiClient.setPrimaryUPIAccount(result.id, _upiAccounts);
+        }
+
+        // Success message
+        _showSnackBar('UPI account added successfully', Colors.green);
+      } catch (e) {
+        // Error message
+        _showSnackBar(
+            'Failed to save UPI details. Please try again.', Colors.red);
+      }
+    }
+  }
+
+  // Helper method to show snackbars
+  void _showSnackBar(String message, Color backgroundColor) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            if (backgroundColor == Colors.blue.shade700)
               SizedBox(
                 height: 20,
                 width: 20,
@@ -198,46 +159,19 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
                   color: Colors.white,
                 ),
               ),
-              SizedBox(width: 16),
-              Text('Saving UPI details...'),
-            ],
-          ),
-          duration: Duration(seconds: 1),
-          backgroundColor: Colors.blue.shade700,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            if (backgroundColor == Colors.blue.shade700) SizedBox(width: 16),
+            Text(message),
+          ],
         ),
-      );
-
-      // Save using API
-      try {
-        final success = await ApiService.createUPIAccount(id, result);
-        
-        if (success) {
-          // Success message
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('UPI account added successfully'),
-              backgroundColor: Colors.green,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-          );
-        } else {
-          throw Exception('Failed to save UPI details');
-        }
-      } catch (e) {
-        // Error message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save UPI details. Please try again.'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
-      }
-    }
+        duration:
+            Duration(seconds: backgroundColor == Colors.blue.shade700 ? 1 : 3),
+        backgroundColor: backgroundColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: EdgeInsets.all(16),
+        padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      ),
+    );
   }
 
   // Edit an existing UPI account
@@ -248,6 +182,8 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
     );
 
     if (result != null) {
+      final bool primaryChanged = result.isPrimary != account.isPrimary;
+
       setState(() {
         final index =
             _upiAccounts.indexWhere((element) => element.id == result.id);
@@ -259,60 +195,29 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
             }
           }
           _upiAccounts[index] = result;
+          _selectedAccount = result; // Update the selected account
         }
       });
 
-      // Show loading indicator
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              ),
-              SizedBox(width: 16),
-              Text('Updating UPI details...'),
-            ],
-          ),
-          duration: Duration(seconds: 1),
-          backgroundColor: Colors.blue.shade700,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
+      _showSnackBar('Updating UPI details...', Colors.blue.shade700);
 
-      // Update using API
+      // Update Firebase using REST API
       try {
-        final success = await ApiService.updateUPIAccount(id, result);
-        
-        if (success) {
-          // Success message
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('UPI account updated successfully'),
-              backgroundColor: Colors.green,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-          );
-        } else {
-          throw Exception('Failed to update UPI details');
+        await _apiClient.updateUPIAccount(result);
+
+        // If primary status changed, update all accounts
+        if (primaryChanged) {
+          await _apiClient.setPrimaryUPIAccount(
+              result.isPrimary
+                  ? result.id
+                  : _upiAccounts.firstWhere((a) => a.isPrimary).id,
+              _upiAccounts);
         }
+
+        _showSnackBar('UPI account updated successfully', Colors.green);
       } catch (e) {
-        // Error message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to update UPI details. Please try again.'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
+        _showSnackBar(
+            'Failed to update UPI details. Please try again.', Colors.red);
       }
     }
   }
@@ -320,28 +225,61 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
   // Delete a UPI account
   void _deleteUPIAccount(String accountId) async {
     // Check if this is the primary account
-    final isPrimary =
-        _upiAccounts.firstWhere((element) => element.id == accountId).isPrimary;
+    final accountToDelete =
+        _upiAccounts.firstWhere((element) => element.id == accountId);
+    final isPrimary = accountToDelete.isPrimary;
 
     if (isPrimary && _upiAccounts.length > 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              'Cannot delete primary UPI account. Set another account as primary first.'),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
+      _showSnackBar(
+          'Cannot delete primary UPI account. Set another account as primary first.',
+          Colors.red);
       return;
     }
 
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Delete UPI Account'),
-        content: const Text('Are you sure you want to delete this UPI account?'),
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            SizedBox(width: 12),
+            Text('Delete UPI Account'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Are you sure you want to delete this UPI account?'),
+            SizedBox(height: 16),
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.payment, color: Colors.blue),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          accountToDelete.upiId,
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        if (accountToDelete.merchantName.isNotEmpty)
+                          Text(accountToDelete.merchantName),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -354,7 +292,6 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
           ),
         ],
@@ -369,97 +306,58 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
         if (isPrimary && _upiAccounts.isNotEmpty) {
           _upiAccounts.first.isPrimary = true;
         }
+
+        // If we removed the selected account, select another one or null
+        if (_selectedAccount?.id == accountId) {
+          _selectedAccount =
+              _upiAccounts.isNotEmpty ? _upiAccounts.first : null;
+        }
       });
 
-      // Show loading indicator
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              ),
-              SizedBox(width: 16),
-              Text('Deleting UPI account...'),
-            ],
-          ),
-          duration: Duration(seconds: 1),
-          backgroundColor: Colors.blue.shade700,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
+      _showSnackBar('Deleting UPI account...', Colors.blue.shade700);
 
-      // Delete using API
+      // Delete from Firebase using REST API
       try {
-        final success = await ApiService.deleteUPIAccount(id, accountId);
-        
-        if (success) {
-          // If we need to update the primary account
-          if (isPrimary && _upiAccounts.isNotEmpty) {
-            await ApiService.updateUPIAccount(id, _upiAccounts.first);
-          }
-          
-          // Success message
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('UPI account deleted successfully'),
-              backgroundColor: Colors.green,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-          );
-        } else {
-          throw Exception('Failed to delete UPI account');
+        await _apiClient.deleteUPIAccount(accountId);
+
+        // If we deleted the primary and have others, set a new primary
+        if (isPrimary && _upiAccounts.isNotEmpty) {
+          await _apiClient.updateUPIAccount(_upiAccounts.first);
         }
+
+        _showSnackBar('UPI account deleted successfully', Colors.green);
       } catch (e) {
-        // Error message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to delete UPI account. Please try again.'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
+        _showSnackBar(
+            'Failed to delete UPI account. Please try again.', Colors.red);
       }
     }
   }
 
-  // Toggle the active status of a UPI account
   void _toggleUPIAccountStatus(String accountId) async {
     setState(() {
-      final index = _upiAccounts.indexWhere((element) => element.id == accountId);
+      final index =
+          _upiAccounts.indexWhere((element) => element.id == accountId);
       if (index != -1) {
         _upiAccounts[index].isActive = !_upiAccounts[index].isActive;
+
+        // Also update the selected account if needed
+        if (_selectedAccount?.id == accountId) {
+          _selectedAccount = _upiAccounts[index];
+        }
       }
     });
 
-    // Update using API
+    // Update Firebase using REST API
     try {
-      final index = _upiAccounts.indexWhere((element) => element.id == accountId);
+      final index =
+          _upiAccounts.indexWhere((element) => element.id == accountId);
       if (index != -1) {
-        final success = await ApiService.updateUPIAccount(id, _upiAccounts[index]);
-        
-        if (!success) {
-          throw Exception('Failed to update UPI account status');
-        }
+        await _apiClient.updateUPIAccountStatus(
+            accountId, _upiAccounts[index].isActive);
       }
     } catch (e) {
-      // Show error message on failure
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to update UPI account status. Please try again.'),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
+      _showSnackBar(
+          'Failed to update UPI account status. Please try again.', Colors.red);
     }
   }
 
@@ -468,83 +366,55 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
     setState(() {
       for (var account in _upiAccounts) {
         account.isPrimary = account.id == accountId;
+
+        // Also update the selected account if needed
+        if (_selectedAccount?.id == account.id) {
+          _selectedAccount = account;
+        }
       }
     });
 
-    // Show loading indicator
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            SizedBox(
-              height: 20,
-              width: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            ),
-            SizedBox(width: 16),
-            Text('Setting primary account...'),
-          ],
-        ),
-        duration: Duration(seconds: 1),
-        backgroundColor: Colors.blue.shade700,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
+    _showSnackBar('Setting primary account...', Colors.blue.shade700);
 
-    // Update all accounts using API
+    // Update Firebase for all accounts using REST API
     try {
-      // Update each account
-      for (var account in _upiAccounts) {
-        final success = await ApiService.updateUPIAccount(id, account);
-        if (!success) {
-          throw Exception('Failed to update primary UPI account');
-        }
-      }
-      
-      // Success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Primary UPI account updated successfully'),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
+      await _apiClient.setPrimaryUPIAccount(accountId, _upiAccounts);
+      _showSnackBar('Primary UPI account updated successfully', Colors.green);
     } catch (e) {
-      // Error message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to update primary UPI account. Please try again.'),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
+      _showSnackBar('Failed to update primary UPI account. Please try again.',
+          Colors.red);
     }
+  }
+
+  // Select a UPI account
+  void _selectUPIAccount(UPIDetails account) {
+    setState(() {
+      _selectedAccount = account;
+    });
   }
 
   @override
   void initState() {
     super.initState();
-    
+
     // Animation setup for smooth transitions
     _animationController = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: 500),
     );
-    
+
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeIn)
+      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
     );
-    
-    // Initialize and load data
+
+    // Setup keyboard shortcuts
+    _shortcuts[LogicalKeySet(
+        LogicalKeyboardKey.control, LogicalKeyboardKey.keyN)] = _addUPIAccount;
+
+    // Initialize Firebase and load data
     _setIdFromPreference();
   }
-  
+
   @override
   void dispose() {
     _animationController.dispose();
@@ -554,12 +424,13 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
   void _setIdFromPreference() async {
     final prefs = await SharedPreferences.getInstance();
     final storedId = prefs.getString('createdAt') ?? '';
-    
+
     setState(() {
-      id = storedId;
+      storeId = storedId;
     });
-    
+
     if (storedId.isNotEmpty) {
+      _initializeApiClient();
       _loadData();
     } else {
       setState(() {
@@ -569,21 +440,24 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
   }
 
   Future<void> _loadData() async {
-    // Set loading state
     setState(() {
       _isLoading = true;
     });
-    
+
     try {
-      // Load UPI accounts using REST API
-      final accounts = await ApiService.getUPIAccounts(id);
-      
-      // Load payment settings using REST API
-      final acceptUpi = await ApiService.getPaymentSettings(id);
-      
+      // Load UPI accounts from REST API
+      final accounts = await _apiClient.loadUPIAccounts();
+
+      // Load UPI setting from REST API
+      final acceptUPI = await _apiClient.loadAcceptUPI();
+
       setState(() {
         _upiAccounts = accounts;
-        _acceptUPI = acceptUpi;
+        _acceptUPI = acceptUPI;
+
+        // Set selected account
+        _selectedAccount = _upiAccounts.isNotEmpty ? _upiAccounts.first : null;
+
         _isLoading = false;
         _animationController.forward();
       });
@@ -591,273 +465,840 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
       setState(() {
         _isLoading = false;
       });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to connect to the server. Please check your internet connection.'),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+
+      _showSnackBar('Failed to load data: ${e.toString()}', Colors.red);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-     appBar: AppBar(
-  title: const Text('UPI Payment Settings'),
-  centerTitle: true,
-  backgroundColor: Colors.white,
-  foregroundColor: Colors.black87,
-  elevation: 1,
-  leading: IconButton(
-    icon: Container(
-      padding: EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Colors.grey.withAlpha(25),
-        shape: BoxShape.circle,
-      ),
-      child: Icon(Icons.arrow_back_ios_new, size: 16, color: Colors.black87),
-    ),
-    onPressed: () => Navigator.of(context).pop(),
-  ),
-),
-
-      body: RefreshIndicator(
-        onRefresh: _loadData,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Master switch for UPI
-            Container(
-              padding: const EdgeInsets.all(16.0),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(
-                  bottom: BorderSide(color: Colors.grey.shade200),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.shade100,
-                    blurRadius: 4,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.payments_outlined,
-                      color: Colors.blue, size: 32),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Accept UPI Payments',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        Text(
-                          'Enable UPI payments for your customers',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Use a custom switch with animations
-                  AnimatedContainer(
-                    duration: Duration(milliseconds: 300),
-                    height: 30,
-                    width: 55,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                      color: _acceptUPI ? Colors.green : Colors.grey.shade300,
-                    ),
-                    child: Stack(
-                      children: [
-                        AnimatedPositioned(
-                          duration: Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                          left: _acceptUPI ? 25 : 0,
-                          top: 2.5,
-                          child: GestureDetector(
-                            onTap: () async {
-                              final newValue = !_acceptUPI;
-                              
-                              // Update using API
-                              try {
-                                final success = await ApiService.updatePaymentSettings(id, newValue);
-                                
-                                if (success) {
-                                  setState(() {
-                                    _acceptUPI = newValue;
-                                  });
-                                } else {
-                                  throw Exception('Failed to update payment settings');
-                                }
-                              } catch (e) {
-                                // Show error message
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Failed to update payment settings. Please try again.'),
-                                    backgroundColor: Colors.red,
-                                    behavior: SnackBarBehavior.floating,
-                                  ),
-                                );
-                              }
-                            },
-                            child: Container(
-                              width: 25,
-                              height: 25,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.white,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black12,
-                                    blurRadius: 4,
-                                    offset: Offset(0, 1),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            if (_acceptUPI) ...[
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  children: [
-                    Text(
-                      'Your UPI Accounts',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Spacer(),
-                    if (_isLoading)
-                      SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: _isLoading
-                    ? _buildShimmerLoading() // Show shimmer while loading
-                    : _upiAccounts.isEmpty
-                        ? _buildEmptyState() // Empty state
-                        : _buildUpiAccountsList(), // UPI accounts list
-              ),
-            ],
-
-            if (!_acceptUPI)
-              Expanded(
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.account_balance_wallet_outlined,
-                        size: 72,
-                        color: Colors.grey[300],
-                      ),
-                      const SizedBox(height: 24),
-                      const Text(
-                        'UPI Payments are disabled',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Enable UPI payments using the switch above',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton.icon(
-                        icon: Icon(Icons.toggle_on),
-                        label: Text('Enable UPI Payments'),
-                        onPressed: () async {
-                          // Update using API
-                          try {
-                            final success = await ApiService.updatePaymentSettings(id, true);
-                            
-                            if (success) {
-                              setState(() {
-                                _acceptUPI = true;
-                              });
-                            } else {
-                              throw Exception('Failed to update payment settings');
-                            }
-                          } catch (e) {
-                            // Show error message
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Failed to enable UPI payments. Please try again.'),
-                                backgroundColor: Colors.red,
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-          ],
+      appBar: AppBar(
+        title: const Text('UPI Payment Settings'),
+        centerTitle: false,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
         ),
+        actions: [
+          // Help button
+          IconButton(
+            icon: Icon(Icons.help_outline),
+            tooltip: 'Help',
+            onPressed: () {
+              // Show help dialog
+            },
+          ),
+          // Refresh button
+          IconButton(
+            icon: Icon(Icons.refresh),
+            tooltip: 'Refresh',
+            onPressed: _loadData,
+          ),
+          SizedBox(width: 16),
+        ],
       ),
-      floatingActionButton: _acceptUPI && !_isLoading
-          ? FloatingActionButton.extended(
-              onPressed: _addUPIAccount,
-              icon: const Icon(Icons.add),
-              label: const Text('Add UPI'),
-              tooltip: 'Add new UPI account',
-              elevation: 4,
-            )
-          : null,
+      body: FocusableActionDetector(
+        // shortcuts: _shortcuts,
+        // actions: {
+        //   for (final entry in _shortcuts.entries)
+        //     entry.key: CallbackAction(
+        //       onInvoke: (_) => entry.value(),
+        //     ),
+        // },
+        child: _buildDesktopLayout(),
+      ),
     );
   }
 
-  // Shimmer loading effect for UPI accounts
+  Widget _buildDesktopLayout() {
+    return Row(
+      children: [
+        // Left sidebar - Navigation and Account List
+        Container(
+          width: 300,
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            border: Border(right: BorderSide(color: Colors.grey.shade200)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Section title
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+                child: Row(
+                  children: [
+                    Icon(Icons.payments, color: Colors.blue.shade700),
+                    SizedBox(width: 12),
+                    Text(
+                      'Payment Methods',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue.shade800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // UPI Master Switch
+              Container(
+                margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.blue.withOpacity(0.1),
+                      blurRadius: 4,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.account_balance_wallet,
+                      color: _acceptUPI ? Colors.blue : Colors.grey,
+                    ),
+                    SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        'Accept UPI Payments',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    Switch(
+                      value: _acceptUPI,
+                      onChanged: (value) {
+                        setState(() {
+                          _acceptUPI = value;
+                        });
+
+                        // Using REST API instead of direct Firebase
+                        _apiClient.updateAcceptUPI(value).catchError((error) {
+                          _showSnackBar(
+                              'Failed to update UPI settings. Please try again.',
+                              Colors.red);
+
+                          // Revert state on failure
+                          setState(() {
+                            _acceptUPI = !value;
+                          });
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+
+              Divider(height: 32),
+
+              // UPI Accounts List Title
+              if (_acceptUPI)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Your UPI Accounts',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                      ),
+                      if (_isLoading)
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.blue),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+
+              // UPI Accounts List
+              if (_acceptUPI)
+                Expanded(
+                  child: _isLoading
+                      ? _buildSidebarShimmerLoading()
+                      : _upiAccounts.isEmpty
+                          ? _buildSidebarEmptyState()
+                          : _buildSidebarAccountList(),
+                ),
+
+              // Add UPI Account Button (only if UPI payments are accepted)
+              if (_acceptUPI)
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: ElevatedButton.icon(
+                    onPressed: _addUPIAccount,
+                    icon: Icon(Icons.add),
+                    label: Text('Add UPI Account'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade700,
+                      foregroundColor: Colors.white,
+                      minimumSize: Size(double.infinity, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        // Main content area - Account details
+        Expanded(
+          child: !_acceptUPI
+              ? _buildUpiDisabledView()
+              : _selectedAccount == null
+                  ? _buildNoSelectionView()
+                  : _buildAccountDetailsView(),
+        ),
+      ],
+    );
+  }
+
+  // Sidebar UPI account list
+  Widget _buildSidebarAccountList() {
+    return ListView.builder(
+      itemCount: _upiAccounts.length,
+      padding: EdgeInsets.all(8),
+      itemBuilder: (context, index) {
+        final account = _upiAccounts[index];
+        return Card(
+          margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          color:
+              _selectedAccount?.id == account.id ? Colors.blue.shade50 : null,
+          elevation: _selectedAccount?.id == account.id ? 0 : 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: BorderSide(
+              color: _selectedAccount?.id == account.id
+                  ? Colors.blue.shade300
+                  : Colors.transparent,
+            ),
+          ),
+          child: ListTile(
+            onTap: () => _selectUPIAccount(account),
+            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: account.isActive
+                    ? (account.isPrimary
+                        ? Colors.blue.shade100
+                        : Colors.blue.shade50)
+                    : Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                _getIconForUPIApp(account.upiApp),
+                color: account.isActive
+                    ? (account.isPrimary
+                        ? Colors.blue.shade800
+                        : Colors.blue.shade600)
+                    : Colors.grey,
+              ),
+            ),
+            title: Text(
+              account.upiId,
+              style: TextStyle(
+                fontWeight: _selectedAccount?.id == account.id
+                    ? FontWeight.bold
+                    : FontWeight.normal,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              account.merchantName,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (account.isPrimary)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Icon(Icons.star, size: 16, color: Colors.amber),
+                  ),
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: account.isActive ? Colors.green : Colors.grey,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Empty state for the sidebar
+  Widget _buildSidebarEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.account_balance_wallet_outlined,
+            size: 48,
+            color: Colors.grey[300],
+          ),
+          SizedBox(height: 16),
+          Text(
+            'No UPI accounts',
+            style: TextStyle(color: Colors.grey),
+          ),
+          SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: _addUPIAccount,
+            icon: Icon(Icons.add),
+            label: Text('Add First Account'),
+            style: ElevatedButton.styleFrom(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Shimmer loading for the sidebar
+  Widget _buildSidebarShimmerLoading() {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey[300]!,
+      highlightColor: Colors.grey[100]!,
+      child: ListView.builder(
+        itemCount: 5,
+        padding: EdgeInsets.all(16),
+        itemBuilder: (context, index) {
+          return Card(
+            margin: EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              title: Container(
+                height: 14,
+                width: double.infinity,
+                color: Colors.white,
+              ),
+              subtitle: Container(
+                height: 10,
+                width: 100,
+                margin: EdgeInsets.only(top: 8),
+                color: Colors.white,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // Account details view for the main content area
+  Widget _buildAccountDetailsView() {
+    final account = _selectedAccount!;
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header with account info
+          Row(
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: account.isActive
+                      ? (account.isPrimary
+                          ? Colors.blue.shade100
+                          : Colors.blue.shade50)
+                      : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  _getIconForUPIApp(account.upiApp),
+                  color: account.isActive
+                      ? (account.isPrimary
+                          ? Colors.blue.shade800
+                          : Colors.blue.shade600)
+                      : Colors.grey,
+                  size: 32,
+                ),
+              ),
+              SizedBox(width: 24),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          account.upiId,
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(width: 12),
+                        if (account.isPrimary)
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade100,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.amber.shade300),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.star,
+                                  size: 16,
+                                  color: Colors.amber.shade800,
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Primary Account',
+                                  style: TextStyle(
+                                    color: Colors.amber.shade800,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      account.merchantName,
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Account status switch
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    account.isActive ? 'Active' : 'Inactive',
+                    style: TextStyle(
+                      color: account.isActive ? Colors.green : Colors.grey,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Switch(
+                    value: account.isActive,
+                    onChanged: (_) => _toggleUPIAccountStatus(account.id),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          SizedBox(height: 32),
+
+          // Account details cards in a grid layout
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Left column - Basic info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildDetailCard(
+                      title: 'Account Information',
+                      content: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildDetailItem('UPI ID', account.upiId),
+                          _buildDetailItem(
+                              'Merchant Name', account.merchantName),
+                          if (account.displayName != null)
+                            _buildDetailItem(
+                                'Display Name', account.displayName!),
+                          if (account.bankName != null)
+                            _buildDetailItem('Bank', account.bankName!),
+                          if (account.upiApp != null)
+                            _buildDetailItem('UPI App', account.upiApp!),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: 24),
+                    _buildDetailCard(
+                      title: 'Primary Status',
+                      content: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            account.isPrimary
+                                ? 'This is your primary account and will be used as the default for accepting payments.'
+                                : 'This is a secondary account. You can set it as primary to use it as the default for accepting payments.',
+                            style: TextStyle(
+                              color: Colors.grey.shade700,
+                              height: 1.5,
+                            ),
+                          ),
+                          SizedBox(height: 16),
+                          if (!account.isPrimary)
+                            ElevatedButton.icon(
+                              onPressed: () =>
+                                  _setPrimaryUPIAccount(account.id),
+                              icon: Icon(Icons.star_outline),
+                              label: Text('Set as Primary'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.amber.shade700,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              SizedBox(width: 24),
+
+              // Right column - QR Code and actions
+              Expanded(
+                child: Column(
+                  children: [
+                    _buildDetailCard(
+                      title: 'UPI Payment QR Code',
+                      content: Column(
+                        children: [
+                          Container(
+                            height: 250,
+                            width: 250,
+                            padding: EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.grey.shade200),
+                            ),
+                            child: QrImageView(
+                              data:
+                                  'upi://pay?pa=${account.upiId}&pn=${account.merchantName}&cu=INR',
+                              version: QrVersions.auto,
+                              size: 200.0,
+                              backgroundColor: Colors.white,
+                            ),
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'Scan this QR code to pay directly to this UPI account',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              OutlinedButton.icon(
+                                onPressed: () {
+                                  // Download QR code functionality
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Downloading QR Code...'),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                },
+                                icon: Icon(Icons.download),
+                                label: Text('Download'),
+                              ),
+                              SizedBox(width: 16),
+                              OutlinedButton.icon(
+                                onPressed: () {
+                                  // Share QR code functionality
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Sharing QR Code...'),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                },
+                                icon: Icon(Icons.share),
+                                label: Text('Share'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    SizedBox(height: 24),
+
+                    // Actions card
+                    _buildDetailCard(
+                      title: 'Account Actions',
+                      content: Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => _editUPIAccount(account),
+                              icon: Icon(Icons.edit),
+                              label: Text('Edit'),
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: Size(0, 48),
+                                side: BorderSide(color: Colors.blue),
+                                foregroundColor: Colors.blue,
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 16),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => _deleteUPIAccount(account.id),
+                              icon: Icon(Icons.delete_outline),
+                              label: Text('Delete'),
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: Size(0, 48),
+                                side: BorderSide(color: Colors.red),
+                                foregroundColor: Colors.red,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper method to build detail items
+  Widget _buildDetailItem(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label + ':',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.grey.shade700,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: Colors.grey.shade900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper method to build detail cards
+  Widget _buildDetailCard({required String title, required Widget content}) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.shade100,
+            blurRadius: 4,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Title with gradient background
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(12),
+                topRight: Radius.circular(12),
+              ),
+              border: Border(
+                bottom: BorderSide(color: Colors.grey.shade200),
+              ),
+            ),
+            child: Text(
+              title,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.blue.shade800,
+              ),
+            ),
+          ),
+          // Content area
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: content,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // View for when UPI is disabled
+  Widget _buildUpiDisabledView() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.account_balance_wallet_outlined,
+            size: 96,
+            color: Colors.grey[300],
+          ),
+          SizedBox(height: 32),
+          Text(
+            'UPI Payments are disabled',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey,
+            ),
+          ),
+          SizedBox(height: 16),
+          Text(
+            'Enable UPI payments using the switch in the sidebar',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey,
+            ),
+          ),
+          SizedBox(height: 32),
+          ElevatedButton.icon(
+            icon: Icon(Icons.toggle_on),
+            label: Text('Enable UPI Payments'),
+            onPressed: () {
+              setState(() {
+                _acceptUPI = true;
+              });
+
+              // Using REST API instead of direct Firebase
+              _apiClient.updateAcceptUPI(true).catchError((error) {
+                _showSnackBar(
+                    'Failed to enable UPI payments. Please try again.',
+                    Colors.red);
+
+                // Revert state on failure
+                setState(() {
+                  _acceptUPI = false;
+                });
+              });
+            },
+            style: ElevatedButton.styleFrom(
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // View for when no account is selected
+  Widget _buildNoSelectionView() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.touch_app,
+            size: 72,
+            color: Colors.blue[200],
+          ),
+          SizedBox(height: 24),
+          Text(
+            _upiAccounts.isEmpty
+                ? 'No UPI accounts have been added yet'
+                : 'Select an account from the sidebar',
+            style: TextStyle(
+              fontSize: 20,
+              color: Colors.grey[700],
+            ),
+          ),
+          SizedBox(height: 32),
+          ElevatedButton.icon(
+            icon: Icon(Icons.add),
+            label: Text('Add New UPI Account'),
+            onPressed: _addUPIAccount,
+            style: ElevatedButton.styleFrom(
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Shimmer loading effect for UPI accounts (unused in this version, but kept for reference)
   Widget _buildShimmerLoading() {
     return Shimmer.fromColors(
       baseColor: Colors.grey[300]!,
       highlightColor: Colors.grey[100]!,
       child: ListView.separated(
         padding: EdgeInsets.all(16),
-        itemCount: 3, // Show 3 placeholder items
+        itemCount: 3,
         separatorBuilder: (context, index) => SizedBox(height: 16),
         itemBuilder: (context, index) {
           return Card(
@@ -944,7 +1385,7 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
     );
   }
 
-  // Empty state widget
+  // Empty state widget (unused in this version, but kept for reference)
   Widget _buildEmptyState() {
     return FadeTransition(
       opacity: _fadeAnimation,
@@ -993,8 +1434,8 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
                 icon: const Icon(Icons.add),
                 label: const Text('Add UPI Account'),
                 style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 32, vertical: 16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -1011,37 +1452,51 @@ class ManagerPaymentMethodsState extends State<ManagerPaymentMethods> with Singl
     );
   }
 
-    // UPI accounts list
+  // UPI accounts list (unused in this version, but kept for reference)
   Widget _buildUpiAccountsList() {
     return FadeTransition(
       opacity: _fadeAnimation,
       child: ListView.separated(
-        physics: AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         itemCount: _upiAccounts.length,
         separatorBuilder: (context, index) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
           final account = _upiAccounts[index];
-          return AnimatedContainer(
-            duration: Duration(milliseconds: 300),
-            transform: Matrix4.identity()..translate(0.0, 0.0, 0.0),
-            curve: Curves.easeInOut,
-            child: UPIAccountItem(
-              upiDetails: account,
-              onEdit: () => _editUPIAccount(account),
-              onDelete: () => _deleteUPIAccount(account.id),
-              onToggle: () => _toggleUPIAccountStatus(account.id),
-              onSetPrimary: account.isPrimary
-                  ? null
-                  : () => _setPrimaryUPIAccount(account.id),
-            ),
+          return UPIAccountItem(
+            upiDetails: account,
+            onEdit: () => _editUPIAccount(account),
+            onDelete: () => _deleteUPIAccount(account.id),
+            onToggle: () => _toggleUPIAccountStatus(account.id),
+            onSetPrimary: account.isPrimary
+                ? null
+                : () => _setPrimaryUPIAccount(account.id),
           );
         },
       ),
     );
   }
+
+  IconData _getIconForUPIApp(String? app) {
+    if (app == null) return Icons.account_balance_wallet_outlined;
+
+    switch (app.toLowerCase()) {
+      case 'google pay':
+        return Icons.g_mobiledata;
+      case 'phonepe':
+        return Icons.phone_android;
+      case 'paytm':
+        return Icons.account_balance_wallet;
+      case 'bhim':
+        return Icons.payments_outlined;
+      case 'amazon pay':
+        return Icons.shopping_cart_outlined;
+      default:
+        return Icons.account_balance_wallet_outlined;
+    }
+  }
 }
 
+// UPI Account Item Card (unused in this desktop version, but kept for reference)
 class UPIAccountItem extends StatelessWidget {
   final UPIDetails upiDetails;
   final VoidCallback onEdit;
@@ -1060,587 +1515,166 @@ class UPIAccountItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Get screen width for responsive design
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isSmallScreen = screenWidth < 360;
-
-    return Hero(
-      tag: 'upi_account_${upiDetails.id}',
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 6),
-        elevation: 2,
-        shadowColor:
-            upiDetails.isPrimary ? Colors.blue.withAlpha(127) : Colors.black12,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(
-            color: upiDetails.isPrimary
-                ? Colors.blue.shade300
-                : (upiDetails.isActive
-                    ? Colors.green.shade100
-                    : Colors.grey.shade200),
-            width: upiDetails.isPrimary ? 2 : 1,
-          ),
+    return Card(
+      margin: const EdgeInsets.only(bottom: 6),
+      elevation: 2,
+      shadowColor:
+          upiDetails.isPrimary ? Colors.blue.withAlpha(127) : Colors.black12,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: upiDetails.isPrimary
+              ? Colors.blue.shade300
+              : (upiDetails.isActive
+                  ? Colors.green.shade100
+                  : Colors.grey.shade200),
+          width: upiDetails.isPrimary ? 2 : 1,
         ),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            gradient: upiDetails.isPrimary
-                ? LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Colors.white, Colors.blue.shade50],
-                  )
-                : null,
-          ),
-          child: Column(
-            children: [
-              // UPI details section
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // UPI App icon with badge for primary
-                    Stack(
-                      children: [
-                        Container(
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            color: upiDetails.isActive
-                                ? (upiDetails.isPrimary
-                                    ? Colors.blue.shade100
-                                    : Colors.blue.shade50)
-                                : Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: upiDetails.isActive && upiDetails.isPrimary
-                                ? [
-                                    BoxShadow(
-                                      color: Colors.blue.withAlpha(76),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
-                                    )
-                                  ]
-                                : null,
-                          ),
-                          child: Icon(
-                            _getIconForUPIApp(upiDetails.upiApp),
-                            color: upiDetails.isActive
-                                ? (upiDetails.isPrimary
-                                    ? Colors.blue.shade800
-                                    : Colors.blue.shade600)
-                                : Colors.grey,
-                            size: 26,
+      ),
+      child: Container(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: upiDetails.isActive
+                        ? (upiDetails.isPrimary
+                            ? Colors.blue.shade100
+                            : Colors.blue.shade50)
+                        : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    _getIconForUPIApp(upiDetails.upiApp),
+                    color: upiDetails.isActive
+                        ? (upiDetails.isPrimary
+                            ? Colors.blue.shade800
+                            : Colors.blue.shade600)
+                        : Colors.grey,
+                    size: 26,
+                  ),
+                ),
+                SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        upiDetails.upiId,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        upiDetails.merchantName,
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      if (upiDetails.bankName != null) ...[
+                        SizedBox(height: 4),
+                        Text(
+                          upiDetails.bankName!,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey.shade600,
                           ),
                         ),
-                        if (upiDetails.isPrimary)
-                          Positioned(
-                            right: -2,
-                            top: -2,
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: Colors.blue,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 2),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.blue.withAlpha(76),
-                                    blurRadius: 4,
-                                    spreadRadius: 1,
-                                  )
-                                ],
-                              ),
-                              child: const Icon(
-                                Icons.star,
-                                color: Colors.white,
-                                size: 10,
-                              ),
-                            ),
+                      ],
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: upiDetails.isActive,
+                  onChanged: (_) => onToggle(),
+                ),
+              ],
+            ),
+            SizedBox(height: 16),
+            Divider(),
+            SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                if (onSetPrimary != null)
+                  TextButton.icon(
+                    icon: Icon(Icons.star_outline),
+                    label: Text('Set Primary'),
+                    onPressed: onSetPrimary,
+                  )
+                else
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.star, size: 16, color: Colors.amber),
+                        SizedBox(width: 4),
+                        Text(
+                          'Primary',
+                          style: TextStyle(
+                            color: Colors.amber[800],
+                            fontWeight: FontWeight.bold,
                           ),
+                        ),
                       ],
                     ),
-                    const SizedBox(width: 16),
-
-                    // UPI Details
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  upiDetails.upiId,
-                                  style: TextStyle(
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: 0.2,
-                                    color: upiDetails.isActive
-                                        ? Colors.black87
-                                        : Colors.grey,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-
-                              // Status switch with improved design
-                              Transform.scale(
-                                scale: 0.8,
-                                child: Switch.adaptive(
-                                  value: upiDetails.isActive,
-                                  onChanged: (_) => onToggle(),
-                                  activeColor: Colors.green,
-                                  activeTrackColor: Colors.green.shade100,
-                                  inactiveThumbColor: Colors.grey.shade400,
-                                  inactiveTrackColor: Colors.grey.shade200,
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 4),
-
-                          // Merchant name and bank
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      upiDetails.merchantName,
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w500,
-                                        color: upiDetails.isActive
-                                            ? Colors.black87
-                                            : Colors.grey,
-                                      ),
-                                    ),
-                                    if (upiDetails.bankName != null)
-                                      Row(
-                                        children: [
-                                          Icon(
-                                            Icons.account_balance_outlined,
-                                            size: 14,
-                                            color: upiDetails.isActive
-                                                ? Colors.grey[600]
-                                                : Colors.grey[400],
-                                          ),
-                                          SizedBox(width: 4),
-                                          Text(
-                                            upiDetails.bankName!,
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              color: upiDetails.isActive
-                                                  ? Colors.grey[600]
-                                                  : Colors.grey[400],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                  ],
-                                ),
-                              ),
-
-                              // Primary badge - shown on larger screens inline
-                              if (upiDetails.isPrimary && !isSmallScreen)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue.shade50,
-                                    borderRadius: BorderRadius.circular(12),
-                                    border:
-                                        Border.all(color: Colors.blue.shade200),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.star,
-                                        size: 12,
-                                        color: Colors.blue,
-                                      ),
-                                      SizedBox(width: 4),
-                                      const Text(
-                                        'Primary',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.blue,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
+                  ),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.qr_code),
+                      onPressed: () => _showQRCode(context),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.edit_outlined),
+                      onPressed: onEdit,
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.delete_outline, color: Colors.red),
+                      onPressed: onDelete,
                     ),
                   ],
                 ),
-              ),
-
-              if (upiDetails.displayName != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Chip(
-                      label: Text(
-                        "Display name: ${upiDetails.displayName!}",
-                        style: TextStyle(fontSize: 12),
-                      ),
-                      backgroundColor: Colors.grey.shade100,
-                      padding: EdgeInsets.zero,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                  ),
-                ),
-
-              const Divider(height: 1, thickness: 1, indent: 16, endIndent: 16),
-
-              // Actions section - Responsive layout
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final bool useCompactLayout = constraints.maxWidth < 400;
-
-                    // For small screens, use a more compact layout with icons
-                    if (useCompactLayout) {
-                      return Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          if (onSetPrimary != null)
-                            _buildIconButton(
-                              Icons.star_outline,
-                              'Primary',
-                              Colors.amber[700] ?? Colors.amber,
-                              onSetPrimary!,
-                            ),
-                          _buildIconButton(
-                            Icons.qr_code,
-                            'QR',
-                            Colors.purple,
-                            () => _showQRCode(context),
-                          ),
-                          _buildIconButton(
-                            Icons.edit_outlined,
-                            'Edit',
-                            Colors.blue,
-                            onEdit,
-                          ),
-                          _buildIconButton(
-                            Icons.delete_outline,
-                            'Delete',
-                            Colors.red,
-                            onDelete,
-                          ),
-                        ],
-                      );
-                    }
-
-                    // For larger screens, use text buttons with gradient backgrounds
-                    return Row(
-                      children: [
-                        if (onSetPrimary != null)
-                          _buildAnimatedButton(
-                            context,
-                            Icons.star_outline,
-                            'Set Primary',
-                            [Colors.amber.shade400, Colors.amber.shade600],
-                            onSetPrimary!,
-                          ),
-                        const Spacer(),
-                        _buildAnimatedButton(
-                          context,
-                          Icons.qr_code,
-                          'QR',
-                          [Colors.purple.shade300, Colors.purple.shade500],
-                          () => _showQRCode(context),
-                        ),
-                        const SizedBox(width: 8),
-                        _buildAnimatedButton(
-                          context,
-                          Icons.edit_outlined,
-                          'Edit',
-                          [Colors.blue.shade300, Colors.blue.shade500],
-                          onEdit,
-                        ),
-                        const SizedBox(width: 8),
-                        _buildAnimatedButton(
-                          context,
-                          Icons.delete_outline,
-                          'Delete',
-                          [Colors.red.shade300, Colors.red.shade500],
-                          onDelete,
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // Helper method for compact icon buttons
-  Widget _buildIconButton(
-      IconData icon, String label, Color color, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color, size: 22),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 12,
-              ),
+              ],
             ),
           ],
         ),
       ),
     );
   }
-  
-  // Helper method for animated buttons with gradient
-  Widget _buildAnimatedButton(
-    BuildContext context,
-    IconData icon,
-    String label,
-    List<Color> colors,
-    VoidCallback onTap,
-  ) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Ink(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            gradient: LinearGradient(
-              colors: colors,
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  icon,
-                  color: Colors.white,
-                  size: 16,
-                ),
-                if (label.isNotEmpty) ...[
-                  const SizedBox(width: 4),
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
-  // Helper method to show QR code dialog with improved UI
   void _showQRCode(BuildContext context) {
-     // Format the UPI URI
-  final upiUri = 'upi://pay?pa=${upiDetails.upiId}&pn=${upiDetails.merchantName}&cu=INR';
-   
+    final upiUri =
+        'upi://pay?pa=${upiDetails.upiId}&pn=${upiDetails.merchantName}&cu=INR';
+
     showDialog(
       context: context,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black26,
-                blurRadius: 16,
-                spreadRadius: 2,
-                offset: Offset(0, 5),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header with gradient
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.blue.shade400, Colors.blue.shade700],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      'Scan to Pay',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withAlpha(51),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        upiDetails.upiId,
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.white,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              
-              // QR Code section
-              Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  children: [
-                    // QR code imageholder with animation
-                     QrImageView(
-                    data: upiUri, // Use the UPI URI as the QR code data
-                    version: QrVersions.auto,
-                    size: 220.0,
-                  ),
-                    const SizedBox(height: 24),
-                    
-                    // UPI app selection hints
-                    Text(
-                      'Scan with any UPI app',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _buildUpiAppIcon('Google Pay', Icons.g_mobiledata),
-                        _buildUpiAppIcon('PhonePe', Icons.phone_android),
-                        _buildUpiAppIcon('Paytm', Icons.account_balance_wallet),
-                        _buildUpiAppIcon('BHIM', Icons.payments_outlined),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    
-                    // Share and close buttons
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        ElevatedButton.icon(
-                          icon: Icon(Icons.share),
-                          label: Text('Share'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue.shade600,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          onPressed: () {
-                            // Share QR code functionality would go here
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Sharing QR Code...'),
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                          },
-                        ),
-                        SizedBox(width: 16),
-                        OutlinedButton.icon(
-                          icon: Icon(Icons.close),
-                          label: Text('Close'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.grey.shade700,
-                            side: BorderSide(color: Colors.grey.shade300),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-  
-  // Helper method to build UPI app icons
-  Widget _buildUpiAppIcon(String name, IconData icon) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 8),
-      child: Column(
-        children: [
-          Container(
-            padding: EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              shape: BoxShape.circle,
+      builder: (context) => AlertDialog(
+        title: Text('Scan to Pay'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(upiDetails.upiId),
+            SizedBox(height: 24),
+            QrImageView(
+              data: upiUri,
+              version: QrVersions.auto,
+              size: 200.0,
             ),
-            child: Icon(icon, size: 20),
-          ),
-          SizedBox(height: 4),
-          Text(
-            name,
-            style: TextStyle(fontSize: 10),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Close'),
           ),
         ],
       ),
@@ -1680,7 +1714,8 @@ class AddEditUPIDialog extends StatefulWidget {
   State<AddEditUPIDialog> createState() => _AddEditUPIDialogState();
 }
 
-class _AddEditUPIDialogState extends State<AddEditUPIDialog> with SingleTickerProviderStateMixin {
+class _AddEditUPIDialogState extends State<AddEditUPIDialog>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _upiIdController;
   late TextEditingController _merchantNameController;
@@ -1709,7 +1744,7 @@ class _AddEditUPIDialogState extends State<AddEditUPIDialog> with SingleTickerPr
       duration: Duration(milliseconds: 300),
     );
     _animationController.forward();
-    
+
     final account = widget.upiDetails;
     _upiIdController = TextEditingController(text: account?.upiId ?? '');
     _merchantNameController =
@@ -1755,325 +1790,418 @@ class _AddEditUPIDialogState extends State<AddEditUPIDialog> with SingleTickerPr
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.upiDetails != null;
-    final screenSize = MediaQuery.of(context).size;
-    final isLargeScreen = screenSize.width > 600;
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    // Width calculation for desktop dialog
+    final dialogWidth = screenWidth > 1200 ? 800.0 : (screenWidth * 0.6);
 
     return ScaleTransition(
       scale: CurvedAnimation(
-        parent: _animationController, 
+        parent: _animationController,
         curve: Curves.easeOutBack,
       ),
-      child: AlertDialog(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  isEditing ? Icons.edit : Icons.add_circle_outline, 
-                  color: isEditing ? Colors.blue : Colors.green,
-                ),
-                SizedBox(width: 8),
-                Text(isEditing ? 'Edit UPI Account' : 'Add UPI Account'),
-              ],
-            ),
-            if (isEditing)
-              Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    widget.upiDetails!.upiId,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.normal,
-                      color: Colors.blue.shade700,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        contentPadding: EdgeInsets.fromLTRB(24, isEditing ? 8 : 20, 24, 10),
-        content: Container(
-          width: isLargeScreen ? screenSize.width * 0.5 : screenSize.width * 0.9,
-          child: SingleChildScrollView(
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+      child: Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          width: dialogWidth,
+          padding: EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Title bar
+              Row(
                 children: [
-                  TextFormField(
-                    controller: _upiIdController,
-                    decoration: InputDecoration(
-                      labelText: 'UPI ID',
-                      hintText: 'e.g. yourname@okbank, phone@upi',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      prefixIcon: Icon(Icons.payment),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter your UPI ID';
-                      }
-                      if (!value.contains('@')) {
-                        return 'UPI ID must contain @ symbol';
-                      }
-                      return null;
-                    },
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.next,
+                  Icon(
+                    isEditing ? Icons.edit : Icons.add_circle_outline,
+                    color: isEditing ? Colors.blue : Colors.green,
+                    size: 28,
                   ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _merchantNameController,
-                    decoration: InputDecoration(
-                      labelText: 'Merchant Name',
-                      hintText: 'Name that appears during payment',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      prefixIcon: Icon(Icons.storefront),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter merchant name';
-                      }
-                      return null;
-                    },
-                    textInputAction: TextInputAction.next,
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _displayNameController,
-                    decoration: InputDecoration(
-                      labelText: 'Display Name (Optional)',
-                      hintText: 'Name displayed in your app',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      prefixIcon: Icon(Icons.badge_outlined),
-                    ),
-                    textInputAction: TextInputAction.next,
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                                        controller: _bankNameController,
-                    decoration: InputDecoration(
-                      labelText: 'Bank Name (Optional)',
-                      hintText: 'e.g. SBI, HDFC, ICICI',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      prefixIcon: Icon(Icons.account_balance),
-                    ),
-                    textInputAction: TextInputAction.done,
-                  ),
-                  const SizedBox(height: 16),
+                  SizedBox(width: 16),
                   Text(
-                    'UPI App:',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade300),
+                    isEditing ? 'Edit UPI Account' : 'Add UPI Account',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
                     ),
-                    child: DropdownButtonFormField<String>(
-                      value: _selectedUpiApp,
-                      decoration: InputDecoration(
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 16),
-                        prefixIcon: Icon(
-                          _getIconForUPIApp(_selectedUpiApp),
-                          color: Colors.blue.shade700,
+                  ),
+                  Spacer(),
+                  IconButton(
+                    icon: Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                    tooltip: 'Close',
+                  ),
+                ],
+              ),
+              SizedBox(height: 24),
+
+              // Desktop-specific two-column layout
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Left column - Basic information
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Account Information',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.grey.shade800,
+                                    ),
+                                  ),
+                                  SizedBox(height: 16),
+                                  // UPI ID field
+                                  TextFormField(
+                                    controller: _upiIdController,
+                                    decoration: InputDecoration(
+                                      labelText: 'UPI ID',
+                                      hintText:
+                                          'e.g. yourname@okbank, phone@upi',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      prefixIcon: Icon(Icons.payment),
+                                    ),
+                                    validator: (value) {
+                                      if (value == null || value.isEmpty) {
+                                        return 'Please enter your UPI ID';
+                                      }
+                                      if (!value.contains('@')) {
+                                        return 'UPI ID must contain @ symbol';
+                                      }
+                                      return null;
+                                    },
+                                    keyboardType: TextInputType.emailAddress,
+                                    textInputAction: TextInputAction.next,
+                                  ),
+                                  SizedBox(height: 16),
+
+                                  // Merchant Name field
+                                  TextFormField(
+                                    controller: _merchantNameController,
+                                    decoration: InputDecoration(
+                                      labelText: 'Merchant Name',
+                                      hintText:
+                                          'Name that appears during payment',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      prefixIcon: Icon(Icons.storefront),
+                                    ),
+                                    validator: (value) {
+                                      if (value == null || value.isEmpty) {
+                                        return 'Please enter merchant name';
+                                      }
+                                      return null;
+                                    },
+                                    textInputAction: TextInputAction.next,
+                                  ),
+                                  SizedBox(height: 16),
+
+                                  // Display Name field
+                                  TextFormField(
+                                    controller: _displayNameController,
+                                    decoration: InputDecoration(
+                                      labelText: 'Display Name (Optional)',
+                                      hintText: 'Name displayed in your app',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      prefixIcon: Icon(Icons.badge_outlined),
+                                    ),
+                                    textInputAction: TextInputAction.next,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            SizedBox(width: 24),
+
+                            // Right column - Additional information
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Additional Information',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.grey.shade800,
+                                    ),
+                                  ),
+                                  SizedBox(height: 16),
+
+                                  // Bank Name field
+                                  TextFormField(
+                                    controller: _bankNameController,
+                                    decoration: InputDecoration(
+                                      labelText: 'Bank Name (Optional)',
+                                      hintText: 'e.g. SBI, HDFC, ICICI',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      prefixIcon: Icon(Icons.account_balance),
+                                    ),
+                                    textInputAction: TextInputAction.done,
+                                  ),
+                                  SizedBox(height: 16),
+
+                                  // UPI App dropdown
+                                  Text(
+                                    'UPI App:',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  SizedBox(height: 8),
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                          color: Colors.grey.shade300),
+                                    ),
+                                    child: DropdownButtonFormField<String>(
+                                      value: _selectedUpiApp,
+                                      decoration: InputDecoration(
+                                        border: InputBorder.none,
+                                        contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 16),
+                                        prefixIcon: Icon(
+                                          _getIconForUPIApp(_selectedUpiApp),
+                                          color: Colors.blue.shade700,
+                                        ),
+                                      ),
+                                      items: _upiApps.map((app) {
+                                        return DropdownMenuItem<String>(
+                                          value: app,
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                _getIconForUPIApp(app),
+                                                size: 18,
+                                                color: Colors.grey.shade700,
+                                              ),
+                                              SizedBox(width: 12),
+                                              Text(
+                                                app,
+                                                style: TextStyle(
+                                                    fontWeight:
+                                                        FontWeight.w500),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      }).toList(),
+                                      onChanged: (value) {
+                                        if (value != null) {
+                                          setState(() {
+                                            _selectedUpiApp = value;
+                                          });
+                                        }
+                                      },
+                                      dropdownColor: Colors.white,
+                                      isExpanded: true,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      items: _upiApps.map((app) {
-                        return DropdownMenuItem<String>(
-                          value: app,
+
+                        SizedBox(height: 24),
+
+                        // Toggle switches section
+                        Container(
+                          width: double.infinity,
+                          padding: EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.grey.shade200),
+                          ),
                           child: Row(
                             children: [
-                              Icon(
-                                _getIconForUPIApp(app),
-                                size: 18,
-                                color: Colors.grey.shade700,
+                              // Primary Account toggle
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: Colors.amber.shade100,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        Icons.star,
+                                        color: Colors.amber.shade800,
+                                        size: 24,
+                                      ),
+                                    ),
+                                    SizedBox(width: 16),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Set as Primary',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w500,
+                                              color: _isPrimary
+                                                  ? Colors.amber.shade800
+                                                  : Colors.grey.shade800,
+                                            ),
+                                          ),
+                                          Text(
+                                            'Default account for accepting payments',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Switch(
+                                      value: _isPrimary,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _isPrimary = value;
+                                        });
+                                      },
+                                      activeColor: Colors.amber.shade600,
+                                      activeTrackColor: Colors.amber.shade100,
+                                    ),
+                                  ],
+                                ),
                               ),
-                              SizedBox(width: 12),
-                              Text(
-                                app,
-                                style: TextStyle(fontWeight: FontWeight.w500),
+
+                              SizedBox(width: 24),
+
+                              // Active Account toggle
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green.shade100,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        Icons.check_circle,
+                                        color: Colors.green.shade800,
+                                        size: 24,
+                                      ),
+                                    ),
+                                    SizedBox(width: 16),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Active Account',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w500,
+                                              color: _isActive
+                                                  ? Colors.green.shade800
+                                                  : Colors.grey.shade800,
+                                            ),
+                                          ),
+                                          Text(
+                                            'Account is available for receiving payments',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Switch(
+                                      value: _isActive,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _isActive = value;
+                                        });
+                                      },
+                                      activeColor: Colors.green,
+                                      activeTrackColor: Colors.green.shade100,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          setState(() {
-                            _selectedUpiApp = value;
-                          });
-                        }
-                      },
-                      dropdownColor: Colors.white,
-                      isExpanded: true,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  
-                  // Toggle switches with better UI
-                  Container(
-                    padding: EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade200),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Account Settings',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey.shade800,
-                          ),
-                        ),
-                        SizedBox(height: 16),
-                        // Primary account toggle
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Primary Account',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w500,
-                                      color: _isPrimary
-                                          ? Colors.amber.shade700
-                                          : Colors.grey.shade800,
-                                    ),
-                                  ),
-                                  Text(
-                                    'Set as default for accepting payments',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey.shade600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Switch(
-                              value: _isPrimary,
-                              onChanged: (value) {
-                                setState(() {
-                                  _isPrimary = value;
-                                });
-                              },
-                              activeColor: Colors.amber.shade600,
-                              activeTrackColor: Colors.amber.shade100,
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: 12),
-                        // Active account toggle
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Active',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w500,
-                                      color: _isActive
-                                          ? Colors.green
-                                          : Colors.grey.shade800,
-                                    ),
-                                  ),
-                                  Text(
-                                    'Account is available for receiving payments',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey.shade600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Switch(
-                              value: _isActive,
-                              onChanged: (value) {
-                                setState(() {
-                                  _isActive = value;
-                                });
-                              },
-                              activeColor: Colors.green,
-                              activeTrackColor: Colors.green.shade100,
-                            ),
-                          ],
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        actions: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              TextButton.icon(
-                onPressed: () => Navigator.of(context).pop(),
-                icon: Icon(Icons.close, size: 18),
-                label: const Text('Cancel'),
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.grey.shade700,
                 ),
               ),
-              ElevatedButton.icon(
-                onPressed: _saveUPIAccount,
-                icon: Icon(
-                  isEditing ? Icons.save : Icons.check,
-                  size: 18,
-                ),
-                label: Text(isEditing ? 'Update' : 'Add'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: isEditing ? Colors.blue : Colors.green,
-                  foregroundColor: Colors.white,
-                  elevation: 2,
-                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+
+              SizedBox(height: 32),
+
+              // Action buttons
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      child: Text('Cancel'),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: Colors.grey.shade300),
+                    ),
                   ),
-                ),
+                  SizedBox(width: 16),
+                  ElevatedButton(
+                    onPressed: _saveUPIAccount,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 12),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(isEditing ? Icons.save : Icons.check),
+                          SizedBox(width: 8),
+                          Text(isEditing
+                              ? 'Update UPI Account'
+                              : 'Add UPI Account'),
+                        ],
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isEditing ? Colors.blue : Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
-  
+
   IconData _getIconForUPIApp(String? app) {
     if (app == null) return Icons.account_balance_wallet_outlined;
 

@@ -271,37 +271,7 @@ class _ManagerManageMenuState extends State<ManagerManageMenu> {
     );
   }
   
-  Widget _buildHelpButton() {
-    return IconButton(
-      icon: const Icon(Icons.help_outline, color: Colors.white),
-      tooltip: 'Help & Keyboard Shortcuts',
-      onPressed: () {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Keyboard Shortcuts'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                _KeyboardShortcutRow(shortcut: 'Ctrl+N', description: 'Add new menu item'),
-                _KeyboardShortcutRow(shortcut: 'Ctrl+F', description: 'Search menu items'),
-                _KeyboardShortcutRow(shortcut: 'Escape', description: 'Clear selection'),
-                _KeyboardShortcutRow(shortcut: 'Delete', description: 'Delete selected item'),
-                _KeyboardShortcutRow(shortcut: 'Ctrl+E', description: 'Edit selected item'),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+ 
 
   Widget _buildDesktopLayout() {
     return Column(

@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:canteendesk/API/Cred.dart';
 import 'package:canteendesk/Firebase/FirebaseManager.dart';
+import 'package:canteendesk/Services/ImgBBService.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-
+import 'package:canteendesk/API/Cred.dart';
 class MenuService {
-  // Base URL for the REST API
-  final String baseUrl = Cred.FIREBASE_DATABASE_URL; // No trailing slash
+  String baseUrl = Cred.FIREBASE_DATABASE_URL;
 
   String? _storeId;
   bool _isInitialized = false;
@@ -92,9 +91,6 @@ class MenuService {
     try {
       final response = await http
           .get(Uri.parse('$baseUrl/$_storeId/menu.json?auth=$idToken'));
-      print('Response status code: ${response.statusCode}');
-      print('Response body: ${response.body}');
-
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(response.body);
 
@@ -106,7 +102,6 @@ class MenuService {
           return valueMap;
         }).toList();
 
-        print(dataList);
         return dataList;
       } else {
         print('Error fetching menu items. Status code: ${response.statusCode}');
@@ -139,15 +134,18 @@ class MenuService {
       'isPopular': item['isPopular'] ?? false,
       'hasDiscount': item['hasDiscount'] ?? false,
       'discount': item['hasDiscount'] ? item['discount'] ?? '0' : '0',
-      'image': item['image'] ?? '',
+      'image': item['image']?? '',
       'lastUpdated': currentDate,
       'updatedBy': userLogin,
     };
 
-    final response = await http
-        .post(Uri.parse('$baseUrl/$_storeId/menu.json?auth=$idToken'));
+    final response = await http.post(
+        Uri.parse('$baseUrl/$_storeId/menu.json?auth=$idToken'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload) // Add the missing payload
+        );
 
-    if (response.statusCode != 201) {
+    if (response.statusCode != 200) {
       throw Exception(
           'Failed to add menu item. Status code: ${response.statusCode}');
     }
@@ -179,8 +177,10 @@ class MenuService {
       'updatedBy': userLogin,
     };
 
-    final response =
-        await http.put(Uri.parse('$baseUrl/$_storeId/menu.json?auth=$idToken'));
+    final response = await http.put(
+        Uri.parse('$baseUrl/$_storeId/menu/$id.json?auth=$idToken'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload));
 
     if (response.statusCode != 200) {
       throw Exception(
@@ -195,7 +195,7 @@ class MenuService {
 
     String? idToken = await FirebaseManager().refreshIdTokenAndSave();
     final response = await http
-        .delete(Uri.parse('$baseUrl/$_storeId/menu.json?auth=$idToken'));
+        .delete(Uri.parse('$baseUrl/$_storeId/menu/$id.json?auth=$idToken'));
 
     if (response.statusCode != 200) {
       throw Exception(
@@ -219,8 +219,10 @@ class MenuService {
       'updatedBy': userLogin,
     };
 
-    final response = await http
-        .patch(Uri.parse('$baseUrl/$_storeId/menu.json?auth=$idToken'));
+    final response = await http.patch(
+        Uri.parse('$baseUrl/$_storeId/menu/$id.json?auth=$idToken'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload));
 
     if (response.statusCode != 200) {
       throw Exception(

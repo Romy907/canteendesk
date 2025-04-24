@@ -20,7 +20,7 @@ class _ManagerScreenState extends State<ManagerScreen> {
   final List<Widget> _screens = [
      ManagerHome(),
      ManagerReport(),
-     ManagerOrdersList(),
+     ManagerOrderList(),
      ManagerManageMenu(),
      ManagerPaymentMethods(),
     ManagerOperatingHours(),
