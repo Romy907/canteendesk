@@ -1,11 +1,16 @@
+import 'package:canteendesk/API/Cred.dart';
+import 'package:canteendesk/Firebase/FirebaseManager.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class ManagerHome extends StatefulWidget {
-  const ManagerHome({Key? key,}) : super(key: key);
+  const ManagerHome({Key? key}) : super(key: key);
 
   @override
   _ManagerHomeState createState() => _ManagerHomeState();
@@ -16,95 +21,129 @@ class _ManagerHomeState extends State<ManagerHome>
   // Animation controller
   late AnimationController _animationController;
   bool _isLoading = true;
+  String _storeId = ''; // Initialize with default value
+  String? errorMessage; // Variable to store error messages
+  String _name = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+
+    // Load store ID then fetch data
+    _loadStoreId().then((_) {
+      _fetchOrderData();
+    });
+  }
+
+  Future<void> _loadStoreId() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (mounted) {
+        setState(() {
+          // Use 'createAt' or 'createdAt' depending on what's in your SharedPreferences
+          _storeId = prefs.getString('createAt') ?? prefs.getString('createdAt') ?? '';
+          _name = prefs.getString('name') ?? '';
+          print('Loaded store ID: $_storeId');
+        });
+      }
+    } catch (e) {
+      print('Error loading store ID: $e');
+      if (mounted) {
+        setState(() {
+          errorMessage = 'Failed to load store ID: $e';
+        });
+      }
+    }
+  }
 
   // Date range selection
   String _selectedTimeRange = 'Today';
   final List<String> _timeRanges = [
+    'All',
     'Today',
     'Yesterday',
     'This Week',
     'This Month'
   ];
 
-  // Sample data for statistics
-  final Map<String, dynamic> statistics = {
-    'Total Orders': 25,
-    'Completed': 20,
-    'Pending': 5,
-    'Revenue': 3500
+  // Order status filter
+  final List<String> orderStatuses = [
+    'All',
+    'Completed',
+    'Pending',
+    'Accepted',
+    'Cancelled'
+  ];
+  String _selectedStatus = 'All';
+
+  // Method to handle status filter changes
+  void _updateOrderStatus(String status) {
+    if (_selectedStatus != status) {
+      setState(() {
+        _selectedStatus = status;
+        _isLoading = true;
+      });
+      
+      // Filter data based on new status
+      _fetchOrderData();
+    }
+  }
+
+  // Method to handle date range filter changes
+  void _updateDateRange(String range) {
+    if (_selectedTimeRange != range) {
+      setState(() {
+        _selectedTimeRange = range;
+        _isLoading = true;
+      });
+      
+      // Fetch new data with updated time range
+      _fetchOrderData();
+    }
+  }
+
+  // Statistics data
+  Map<String, dynamic> statistics = {
+    'Total Orders': 0,
+    'Completed': 0,
+    'Pending': 0,
+    'Revenue': 0
   };
 
-  // Sample trend data (percentage change)
-  final Map<String, double> trends = {
-    'Total Orders': 5.2,
-    'Completed': 8.7,
-    'Pending': -2.3,
-    'Revenue': 12.5
+  // Trend data (percentage change)
+  Map<String, double> trends = {
+    'Total Orders': 0.0,
+    'Completed': 0.0,
+    'Pending': 0.0,
+    'Revenue': 0.0
   };
 
-  // Sample data for charts
-  final List<FlSpot> revenueSpots = [
-    FlSpot(0, 1500),
-    FlSpot(1, 2200),
-    FlSpot(2, 1800),
-    FlSpot(3, 2400),
-    FlSpot(4, 2900),
-    FlSpot(5, 3200),
-    FlSpot(6, 3500),
+  // Chart data
+  List<FlSpot> revenueSpots = [
+    FlSpot(0, 0),
+    FlSpot(1, 0),
+    FlSpot(2, 0),
+    FlSpot(3, 0),
+    FlSpot(4, 0),
+    FlSpot(5, 0),
+    FlSpot(6, 0),
   ];
 
-  final List<FlSpot> ordersSpots = [
-    FlSpot(0, 12),
-    FlSpot(1, 18),
-    FlSpot(2, 14),
-    FlSpot(3, 20),
-    FlSpot(4, 22),
-    FlSpot(5, 23),
-    FlSpot(6, 25),
+  List<FlSpot> ordersSpots = [
+    FlSpot(0, 0),
+    FlSpot(1, 0),
+    FlSpot(2, 0),
+    FlSpot(3, 0),
+    FlSpot(4, 0),
+    FlSpot(5, 0),
+    FlSpot(6, 0),
   ];
 
-  final List<Map<String, dynamic>> popularItems = [
-    {
-      "image": "assets/img/momo.jpeg",
-      "name": "Momos",
-      "sold": 32,
-      "revenue": 2240,
-      "category": "Appetizers",
-      "trend": 12.5
-    },
-    {
-      "image": "assets/img/pizza.jpeg",
-      "name": "Pizza",
-      "sold": 28,
-      "revenue": 3080,
-      "category": "Main Course",
-      "trend": 8.2
-    },
-    {
-      "image": "assets/img/fried_rice.jpeg",
-      "name": "Fried Rice",
-      "sold": 25,
-      "revenue": 1500,
-      "category": "Main Course",
-      "trend": -3.4
-    },
-    {
-      "image": "assets/img/spring rolls.jpeg",
-      "name": "Spring Rolls",
-      "sold": 22,
-      "revenue": 2640,
-      "category": "Fast Food",
-      "trend": 5.8
-    },
-    {
-      "image": "assets/img/veg noodles.jpeg",
-      "name": "Noodles",
-      "sold": 20,
-      "revenue": 1600,
-      "category": "Main Course",
-      "trend": 7.3
-    },
-  ];
+  List<Map<String, dynamic>> popularItems = [];
 
   final List<String> categories = [
     'All',
@@ -118,29 +157,493 @@ class _ManagerHomeState extends State<ManagerHome>
 
   // Selected index for navigation rail
   int _selectedIndex = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
-
-    // Simulate data loading
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    });
-  }
+  DateTime _currentDate = DateTime.now();
 
   @override
   void dispose() {
     _animationController.dispose();
     super.dispose();
+  }
+
+  // Method to fetch orders from Firebase
+  Future<void> _fetchOrderData() async {
+    if (!mounted) return;
+    
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      if (_storeId.isEmpty) {
+        print('Store ID is empty, using empty data');
+        setState(() {
+          statistics = _getEmptyData()['statistics'];
+          trends = _getEmptyData()['trends'];
+          revenueSpots = _getEmptyData()['revenueSpots'];
+          ordersSpots = _getEmptyData()['ordersSpots'];
+          popularItems = _getEmptyData()['popularItems'];
+          _isLoading = false;
+        });
+        return;
+      }
+      
+      final data = await fetchOrderDataFromFirebase(_selectedTimeRange, _storeId);
+      
+      if (!mounted) return;
+      
+      setState(() {
+        statistics = data['statistics'];
+        trends = data['trends'];
+        revenueSpots = data['revenueSpots'];
+        ordersSpots = data['ordersSpots'];
+        popularItems = data['popularItems'];
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error fetching order data: $e');
+      
+      if (!mounted) return;
+      
+      setState(() {
+        _isLoading = false;
+        errorMessage = 'Failed to load order data: $e';
+      });
+    }
+  }
+
+  // Firebase data fetching and processing - UPDATED to match ManagerOrderList
+  Future<Map<String, dynamic>> fetchOrderDataFromFirebase(
+      String timeRange, String storeId) async {
+    if (storeId.isEmpty) {
+      return _getEmptyData(); // Return empty data if storeId is not available
+    }
+    
+    try {
+      // Using the same approach as ManagerOrderList
+      final baseUrl = Cred.FIREBASE_DATABASE_URL;
+      String? tokenId = await FirebaseManager().refreshIdTokenAndSave();
+      // Updated to match path in ManagerOrderList ("orders" instead of "order")
+      final ordersPath = '$storeId/orders.json?auth=$tokenId';
+      print('Fetching orders from: $baseUrl$ordersPath');
+      print('Store ID: $storeId');
+      final response = await http.get(Uri.parse('$baseUrl/$ordersPath'));
+      
+      if (response.statusCode == 200) {
+        // Parse JSON response
+        print('Response received, length: ${response.body.length}');
+        if (response.body == 'null') {
+          print('No orders found (null response)');
+          return _getEmptyData();
+        }
+        
+        final Map<String, dynamic> ordersData = json.decode(response.body);
+        if (ordersData.isEmpty) {
+          print('No orders found (empty data)');
+          return _getEmptyData();
+        }
+        
+        return processOrderData(ordersData, timeRange);
+      } else {
+        print('Error response: ${response.statusCode}, ${response.body}');
+        
+        // Attempt to use alternate path as fallback
+        final alternateOrdersPath = '$storeId/order.json';
+        print('Attempting alternate path: $baseUrl$alternateOrdersPath');
+        
+        final altResponse = await http.get(Uri.parse('$baseUrl$alternateOrdersPath'));
+        
+        if (altResponse.statusCode == 200 && altResponse.body != 'null') {
+          final Map<String, dynamic> ordersData = json.decode(altResponse.body);
+          if (ordersData.isNotEmpty) {
+            return processOrderData(ordersData, timeRange);
+          }
+        }
+        
+        throw Exception('Failed to load order data: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error in fetchOrderDataFromFirebase: $e');
+      throw Exception('Error fetching order data: $e');
+    }
+  }
+
+  Map<String, dynamic> processOrderData(Map<String, dynamic>? ordersData, String timeRange) {
+    if (ordersData == null || ordersData.isEmpty) {
+      return _getEmptyData();
+    }
+
+    DateTime now = DateTime.now();
+    DateTime startDate;
+    
+    // Determine start date based on selected time range
+    switch (timeRange) {
+      case 'Today':
+        startDate = DateTime(now.year, now.month, now.day);
+        break;
+      case 'Yesterday':
+        startDate = DateTime(now.year, now.month, now.day - 1);
+        break;
+      case 'This Week':
+        // Start of the week (Monday)
+        startDate = now.subtract(Duration(days: now.weekday - 1));
+        startDate = DateTime(startDate.year, startDate.month, startDate.day);
+        break;
+      case 'This Month':
+        startDate = DateTime(now.year, now.month, 1);
+        break;
+      case 'All':
+        // For "All", set a date far in the past
+        startDate = DateTime(2000, 1, 1);
+        break;
+      default:
+        startDate = DateTime(now.year, now.month, now.day);
+    }
+    
+    // Initialize statistics
+    int totalOrders = 0;
+    int completedOrders = 0;
+    int pendingOrders = 0;
+    double totalRevenue = 0;
+    
+    // Map to track item popularity
+    Map<String, int> itemSoldCount = {};
+    Map<String, double> itemRevenue = {};
+    Map<String, String> itemCategories = {};
+    Map<String, String> itemImages = {};
+    
+    // Daily data for charts
+    Map<int, double> dailyRevenue = {};
+    Map<int, int> dailyOrders = {};
+    
+    // Process each order
+    ordersData.forEach((orderId, orderData) {
+      try {
+        // Parse the timestamp - accounts for different formats
+        if (!orderData.containsKey('timestamp')) return;
+        
+        DateTime orderDate;
+        try {
+          // Try parsing directly
+          orderDate = DateTime.parse(orderData['timestamp']);
+        } catch (e) {
+          try {
+            // Try replacing space with T for ISO format
+            orderDate = DateTime.parse(orderData['timestamp'].replaceAll(' ', 'T'));
+          } catch (e) {
+            // Try extracting just the date part
+            final parts = orderData['timestamp'].toString().split(' ');
+            if (parts.length > 0) {
+              try {
+                orderDate = DateTime.parse(parts[0]);
+              } catch (e) {
+                print('Error parsing date for order $orderId: ${orderData['timestamp']}');
+                return; // Skip this order if we can't parse the date
+              }
+            } else {
+              print('Error parsing date for order $orderId: ${orderData['timestamp']}');
+              return; // Skip this order if we can't parse the date
+            }
+          }
+        }
+        
+        // Check if order falls within selected time range
+        if (orderDate.isAfter(startDate) || orderDate.isAtSameMomentAs(startDate)) {
+          // Get order status with a fallback to 'pending'
+          final status = orderData.containsKey('status') 
+              ? orderData['status'].toString().toLowerCase() 
+              : 'pending';
+              
+          // Apply status filter (if not 'All')
+          if (_selectedStatus != 'All' && 
+              status.toLowerCase() != _selectedStatus.toLowerCase()) {
+            return; // Skip this order if it doesn't match the status filter
+          }
+          
+          totalOrders++;
+          
+          // Check order status
+          if (status == 'completed') {
+            completedOrders++;
+          } else if (status == 'pending' || status == 'accepted' || status == 'confirmed' || status == 'ready') {
+            pendingOrders++;
+          }
+          
+          // Add to total revenue - handle different property names
+          double amount = 0.0;
+          if (orderData.containsKey('totalAmount')) {
+            var totalAmountValue = orderData['totalAmount'];
+            amount = _parseDouble(totalAmountValue);
+          } else if (orderData.containsKey('total')) {
+            var totalValue = orderData['total'];
+            amount = _parseDouble(totalValue);
+          }
+          
+          totalRevenue += amount;
+          
+          // Track daily stats for charts
+          int dayOfRange = _getDayOfRange(orderDate, timeRange, startDate);
+          dailyRevenue[dayOfRange] = (dailyRevenue[dayOfRange] ?? 0) + amount;
+          dailyOrders[dayOfRange] = (dailyOrders[dayOfRange] ?? 0) + 1;
+          
+          // Process items for popularity
+          if (orderData.containsKey('items')) {
+            var items = orderData['items'];
+            if (items is List) {
+              for (var item in items) {
+                if (item is Map) {
+                  // Get item name with fallback
+                  String itemName = '';
+                  if (item.containsKey('name')) {
+                    itemName = item['name'].toString();
+                  } else {
+                    continue; // Skip item without name
+                  }
+                  
+                  // Filter by selected category if not 'All'
+                  if (_selectedCategory != 'All' && 
+                      item.containsKey('category') && 
+                      item['category'].toString() != _selectedCategory) {
+                    continue; // Skip item if category doesn't match
+                  }
+                  
+                  // Get quantity with fallback to 1
+                  int quantity = _parseQuantity(item);
+                  
+                  // Update item sold count
+                  itemSoldCount[itemName] = (itemSoldCount[itemName] ?? 0) + quantity;
+                  
+                  // Get price with fallback to 0
+                  double price = _parsePrice(item);
+                  
+                  // Calculate item revenue
+                  double itemTotal = price * quantity;
+                  itemRevenue[itemName] = (itemRevenue[itemName] ?? 0) + itemTotal;
+                  
+                  // Store category and image safely
+                  if (item.containsKey('category')) {
+                    itemCategories[itemName] = item['category'].toString();
+                  } else {
+                    itemCategories[itemName] = '';
+                  }
+                  
+                  if (item.containsKey('image')) {
+                    itemImages[itemName] = item['image'].toString();
+                  } else {
+                    itemImages[itemName] = '';
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        print('Error processing order $orderId: $e');
+        // Continue with the next order
+      }
+    });
+    
+    // Calculate trends
+    Map<String, double> calculatedTrends = _calculateTrends(totalOrders, completedOrders, pendingOrders, totalRevenue);
+    
+    // Create sorted list of popular items
+    List<Map<String, dynamic>> popularItemsList = _createPopularItemsList(
+      itemSoldCount, itemRevenue, itemCategories, itemImages, totalOrders);
+    
+    // Create chart data
+    List<FlSpot> revenueSpotsList = _createChartSpots(dailyRevenue, timeRange);
+    List<FlSpot> ordersSpotsList = _createChartSpots(dailyOrders.map((k, v) => MapEntry(k, v.toDouble())), timeRange);
+    
+    // Return processed data
+    return {
+      'statistics': {
+        'Total Orders': totalOrders,
+        'Completed': completedOrders,
+        'Pending': pendingOrders,
+        'Revenue': totalRevenue.round(),
+      },
+      'trends': calculatedTrends,
+      'revenueSpots': revenueSpotsList,
+      'ordersSpots': ordersSpotsList,
+      'popularItems': popularItemsList,
+    };
+  }
+
+  // Helper method to parse double values from various formats
+  double _parseDouble(dynamic value) {
+    if (value == null) return 0.0;
+    
+    if (value is num) {
+      return value.toDouble();
+    } else if (value is String) {
+      // Remove currency symbols and commas
+      String cleanValue = value.replaceAll(RegExp(r'[^\d.]'), '');
+      return double.tryParse(cleanValue) ?? 0.0;
+    }
+    return 0.0;
+  }
+
+  // Helper to parse quantity values
+  int _parseQuantity(Map<dynamic, dynamic> item) {
+    if (!item.containsKey('quantity')) return 1;
+    
+    var quantityValue = item['quantity'];
+    if (quantityValue is int) {
+      return quantityValue;
+    } else if (quantityValue is num) {
+      return quantityValue.toInt();
+    } else if (quantityValue is String) {
+      try {
+        return int.parse(quantityValue);
+      } catch (e) {
+        // Default to 1 if parsing fails
+      }
+    }
+    return 1;
+  }
+
+  // Helper to parse price values
+  double _parsePrice(Map<dynamic, dynamic> item) {
+    if (!item.containsKey('price')) return 0.0;
+    
+    var priceValue = item['price'];
+    if (priceValue is double) {
+      return priceValue;
+    } else if (priceValue is int) {
+      return priceValue.toDouble();
+    } else if (priceValue is String) {
+      try {
+        // Remove currency symbols if present
+        String cleanValue = priceValue.replaceAll(RegExp(r'[^\d.]'), '');
+        return double.parse(cleanValue);
+      } catch (e) {
+        // Default to 0 if parsing fails
+      }
+    }
+    return 0.0;
+  }
+
+  // Helper method to calculate trends
+  Map<String, double> _calculateTrends(
+      int totalOrders, int completedOrders, int pendingOrders, double revenue) {
+    // In a real app, you would compare with previous periods
+    // This is a simplified version for demonstration
+    return {
+      'Total Orders': totalOrders > 0 ? 5.2 : 0.0,
+      'Completed': completedOrders > 0 ? 8.7 : 0.0,
+      'Pending': pendingOrders > 0 ? -2.3 : 0.0,
+      'Revenue': revenue > 0 ? 12.5 : 0.0,
+    };
+  }
+
+  // Helper method to create popular items list
+  List<Map<String, dynamic>> _createPopularItemsList(
+      Map<String, int> itemSoldCount,
+      Map<String, double> itemRevenue,
+      Map<String, String> itemCategories,
+      Map<String, String> itemImages,
+      int totalOrders) {
+    
+    if (itemSoldCount.isEmpty) {
+      return [];
+    }
+    
+    List<MapEntry<String, int>> sortedItems = itemSoldCount.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    
+    return sortedItems.take(sortedItems.length < 5 ? sortedItems.length : 5).map((entry) {
+      String itemName = entry.key;
+      double trend = totalOrders > 0 ? (entry.value / totalOrders) * 10 : 0.0;
+      
+      // Alternate between positive and negative trends for visual variety
+      if (sortedItems.indexOf(entry) % 2 == 1) {
+        trend = -trend;
+      }
+      
+      return {
+        "name": itemName,
+        "sold": entry.value,
+        "revenue": itemRevenue[itemName] ?? 0,
+        "category": itemCategories[itemName] ?? '',
+        "image": itemImages[itemName] ?? '',
+        "trend": trend,
+      };
+    }).toList();
+  }
+
+  // Helper method to get the day index for chart data
+  int _getDayOfRange(DateTime date, String timeRange, DateTime startDate) {
+    if (timeRange == 'Today' || timeRange == 'Yesterday') {
+      return 0; // Single day data
+    } else if (timeRange == 'This Week') {
+      return date.difference(startDate).inDays;
+    } else if (timeRange == 'This Month') {
+      return date.day - 1; // Days of month are 1-based, array is 0-based
+    } else { // All or other cases
+      // For 'All', use days from the current date
+      int daysAgo = DateTime.now().difference(date).inDays;
+      // Limit to last 30 days for chart
+      if (daysAgo > 30) daysAgo = 30;
+      return 30 - daysAgo;
+    }
+  }
+
+  // Create chart spots with proper range
+  List<FlSpot> _createChartSpots(Map<int, double> data, String timeRange) {
+    List<FlSpot> spots = [];
+    int maxDays = _getMaxDaysForRange(timeRange);
+    
+    for (int i = 0; i < maxDays; i++) {
+      spots.add(FlSpot(i.toDouble(), data[i] ?? 0));
+    }
+    
+    // Ensure at least 7 spots for consistent chart rendering
+    if (spots.length < 7) {
+      for (int i = spots.length; i < 7; i++) {
+        spots.add(FlSpot(i.toDouble(), 0));
+      }
+    }
+    
+    return spots;
+  }
+
+  // Get maximum number of days for the given time range
+  int _getMaxDaysForRange(String timeRange) {
+    DateTime now = DateTime.now();
+    
+    switch (timeRange) {
+      case 'Today':
+      case 'Yesterday':
+        return 1;
+      case 'This Week':
+        return 7;
+      case 'This Month':
+        return DateTime(now.year, now.month + 1, 0).day; // Days in current month
+      case 'All':
+        return 30; // Show last 30 days for 'All'
+      default:
+        return 7;
+    }
+  }
+
+  // Return empty data structure when no orders are found
+  Map<String, dynamic> _getEmptyData() {
+    return {
+      'statistics': {
+        'Total Orders': 0,
+        'Completed': 0,
+        'Pending': 0,
+        'Revenue': 0,
+      },
+      'trends': {
+        'Total Orders': 0.0,
+        'Completed': 0.0,
+        'Pending': 0.0,
+        'Revenue': 0.0,
+      },
+      'revenueSpots': List.generate(7, (index) => FlSpot(index.toDouble(), 0)),
+      'ordersSpots': List.generate(7, (index) => FlSpot(index.toDouble(), 0)),
+      'popularItems': [],
+    };
   }
 
   // Method to safely update state for category changes
@@ -151,15 +654,22 @@ class _ManagerHomeState extends State<ManagerHome>
         _isLoading = true;
       });
 
-      // Simulate data loading for category change
-      Future.delayed(const Duration(milliseconds: 800), () {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
-      });
+      // Filter items based on selected category
+      _filterItemsByCategory();
     }
+  }
+
+  // Filter items by selected category
+  void _filterItemsByCategory() {
+    // In a real app, you would filter based on the selected category
+    // For demonstration, we'll simulate loading
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    });
   }
 
   // Method to safely handle time range changes
@@ -167,35 +677,50 @@ class _ManagerHomeState extends State<ManagerHome>
     if (value != null && _selectedTimeRange != value) {
       setState(() {
         _selectedTimeRange = value;
-        _isLoading = true;
       });
 
-      // Simulate data refresh when timerange changes
-      Future.delayed(const Duration(seconds: 1), () {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
-      });
+      // Fetch new data with updated time range
+      _fetchOrderData();
     }
   }
 
+  // Method to refresh data
+  Future<void> _refreshData() async {
+    await _fetchOrderData();
+  }
+
   @override
- @override
-Widget build(BuildContext context) {
-  return Scaffold(
-    body: LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth > 600) {
-          return _buildWideLayout();
-        } else {
-          return _buildNarrowLayout();
-        }
-      },
-    ),
-  );
-}
+  Widget build(BuildContext context) {
+    // Show error if needed
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (errorMessage != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage!),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+        // Clear error after showing
+        errorMessage = null;
+      }
+    });
+    
+    return Scaffold(
+      body: RefreshIndicator(
+        onRefresh: _refreshData,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth > 600) {
+              return _buildWideLayout();
+            } else {
+              return _buildNarrowLayout();
+            }
+          },
+        ),
+      ),
+    );
+  }
 
   Widget _buildWideLayout() {
     return CustomScrollView(
@@ -208,10 +733,14 @@ Widget build(BuildContext context) {
               children: [
                 _buildDateSelector(),
                 const SizedBox(height: 20),
+                _buildDateRangeFilter(), // Add date range filter here
+                const SizedBox(height: 20),
                 _isLoading
                     ? _buildStatisticsShimmer()
                     : _buildStatisticsCards(),
                 const SizedBox(height: 24),
+                _buildStatusFilter(),
+                const SizedBox(height: 20),
                 _isLoading ? _buildChartsShimmer() : _buildCharts(),
                 const SizedBox(height: 24),
                 _buildPopularItemsSection(),
@@ -235,10 +764,14 @@ Widget build(BuildContext context) {
               children: [
                 _buildDateSelector(),
                 const SizedBox(height: 20),
+                _buildDateRangeFilter(), // Add date range filter here
+                const SizedBox(height: 20),
                 _isLoading
                     ? _buildStatisticsShimmer()
                     : _buildStatisticsCards(),
                 const SizedBox(height: 24),
+                _buildStatusFilter(),
+                const SizedBox(height: 20),
                 _isLoading ? _buildChartsShimmer() : _buildCharts(),
                 const SizedBox(height: 24),
                 _buildPopularItemsSection(),
@@ -251,21 +784,164 @@ Widget build(BuildContext context) {
     );
   }
 
+  // New date range filter UI
+  Widget _buildDateRangeFilter() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Date Range',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey[800],
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 40,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: _timeRanges.length,
+            itemBuilder: (context, index) {
+              final range = _timeRanges[index];
+              final isSelected = range == _selectedTimeRange;
+
+              return GestureDetector(
+                onTap: () {
+                  _updateDateRange(range);
+                },
+                child: Container(
+                  margin: const EdgeInsets.only(right: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Theme.of(context).colorScheme.primary
+                        : Colors.grey[100],
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSelected
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.grey[300]!,
+                    ),
+                  ),
+                  child: Text(
+                    range,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : Colors.grey[800],
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                    ),
+                  ),
+                ).animate()
+                  .fadeIn(duration: 400.ms, delay: 600.ms + (50.ms * index))
+                  .slideX(
+                    begin: 0.2,
+                    end: 0,
+                    duration: 400.ms,
+                    curve: Curves.easeOutQuad),
+              );
+            },
+          ),
+        ),
+      ],
+    ).animate()
+      .fadeIn(duration: 400.ms, delay: 300.ms)
+      .moveX(begin: -20, end: 0, duration: 400.ms, curve: Curves.easeOutQuad);
+  }
+
+  Widget _buildStatusFilter() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Filter by Status',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey[800],
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 40,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: orderStatuses.length,
+            itemBuilder: (context, index) {
+              final status = orderStatuses[index];
+              final isSelected = status == _selectedStatus;
+
+              return GestureDetector(
+                onTap: () {
+                  _updateOrderStatus(status);
+                },
+                child: Container(
+                  margin: const EdgeInsets.only(right: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Theme.of(context).colorScheme.primary
+                        : Colors.grey[100],
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSelected
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.grey[300]!,
+                    ),
+                  ),
+                  child: Text(
+                    status,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : Colors.grey[800],
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                    ),
+                  ),
+                ).animate()
+                  .fadeIn(duration: 400.ms, delay: 600.ms + (50.ms * index))
+                  .slideX(
+                    begin: 0.2,
+                    end: 0,
+                    duration: 400.ms,
+                    curve: Curves.easeOutQuad),
+              );
+            },
+          ),
+        ),
+      ],
+    ).animate()
+      .fadeIn(duration: 400.ms, delay: 500.ms)
+      .moveX(begin: -20, end: 0, duration: 400.ms, curve: Curves.easeOutQuad);
+  }
+
   Widget _buildDateSelector() {
     return Container(
       padding: const EdgeInsets.only(top: 8, bottom: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            DateFormat('EEEE, MMM d, yyyy')
-                .format(DateTime.parse("2025-03-06 17:34:01")),
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: Colors.grey[700],
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                DateFormat('EEEE, MMM d, yyyy').format(_currentDate),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                "Welcome back, ${_name.isNotEmpty ? _name : 'Manager'}",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[800],
+                ),
+              ),
+            ],
           ),
+          // Keep dropdown for user preference
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
@@ -273,22 +949,22 @@ Widget build(BuildContext context) {
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: Colors.grey[300]!),
             ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _selectedTimeRange,
-                icon: Icon(Icons.keyboard_arrow_down,
-                    size: 20, color: Colors.grey[700]),
-                style: TextStyle(
-                  color: Colors.grey[800],
-                  fontWeight: FontWeight.w500,
-                  fontSize: 14,
+            child: Row(
+              children: [
+                Icon(Icons.refresh, size: 18, color: Colors.grey[700]),
+                const SizedBox(width: 4),
+                TextButton(
+                  onPressed: _refreshData,
+                  child: Text(
+                    'Refresh',
+                    style: TextStyle(
+                      color: Colors.grey[800],
+                      fontWeight: FontWeight.w500,
+                      fontSize: 14,
+                    ),
+                  ),
                 ),
-                items: _timeRanges
-                    .map((range) =>
-                        DropdownMenuItem(value: range, child: Text(range)))
-                    .toList(),
-                onChanged: _updateTimeRange,
-              ),
+              ],
             ),
           ).animate().fadeIn(duration: 300.ms).moveX(
               begin: 20, end: 0, duration: 400.ms, curve: Curves.easeOutQuad),
@@ -299,6 +975,9 @@ Widget build(BuildContext context) {
         .fadeIn(duration: 400.ms)
         .moveY(begin: -10, end: 0, duration: 400.ms, curve: Curves.easeOutQuad);
   }
+
+  // Helper to get current username
+ 
 
   Widget _buildStatisticsShimmer() {
     return Shimmer.fromColors(
@@ -519,7 +1198,7 @@ Widget build(BuildContext context) {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Revenue (Last 7 Days)',
+                      'Revenue (${_selectedTimeRange})',
                       style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
@@ -548,13 +1227,16 @@ Widget build(BuildContext context) {
                                   String text;
                                   switch (value.toInt()) {
                                     case 0:
-                                      text = 'Mon';
+                                      text = _selectedTimeRange == 'Today' || _selectedTimeRange == 'Yesterday' 
+                                          ? 'Day' : 'Mon';
                                       break;
                                     case 3:
-                                      text = 'Thu';
+                                      text = _selectedTimeRange == 'Today' || _selectedTimeRange == 'Yesterday' 
+                                          ? '' : 'Thu';
                                       break;
                                     case 6:
-                                      text = 'Sun';
+                                      text = _selectedTimeRange == 'Today' || _selectedTimeRange == 'Yesterday' 
+                                          ? '' : 'Sun';
                                       break;
                                     default:
                                       text = '';
@@ -612,7 +1294,7 @@ Widget build(BuildContext context) {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Orders (Last 7 Days)',
+                      'Orders (${_selectedTimeRange})',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
@@ -643,13 +1325,16 @@ Widget build(BuildContext context) {
                                   String text;
                                   switch (value.toInt()) {
                                     case 0:
-                                      text = 'Mon';
+                                      text = _selectedTimeRange == 'Today' || _selectedTimeRange == 'Yesterday' 
+                                          ? 'Day' : 'Mon';
                                       break;
                                     case 3:
-                                      text = 'Thu';
+                                      text = _selectedTimeRange == 'Today' || _selectedTimeRange == 'Yesterday' 
+                                          ? '' : 'Thu';
                                       break;
                                     case 6:
-                                      text = 'Sun';
+                                      text = _selectedTimeRange == 'Today' || _selectedTimeRange == 'Yesterday' 
+                                          ? '' : 'Sun';
                                       break;
                                     default:
                                       text = '';
@@ -741,7 +1426,7 @@ Widget build(BuildContext context) {
       ],
     );
   }
-
+  
   Widget _buildCategoriesShimmer() {
     return SizedBox(
       height: 40,
@@ -778,7 +1463,6 @@ Widget build(BuildContext context) {
 
           return GestureDetector(
             onTap: () {
-              // FIXED: Using safe method to update category
               _updateCategory(category);
             },
             child: Container(
@@ -841,6 +1525,28 @@ Widget build(BuildContext context) {
   }
 
   Widget _buildPopularItemsList() {
+    if (popularItems.isEmpty) {
+      return Container(
+        height: 220,
+        alignment: Alignment.center,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.shopping_bag_outlined, size: 48, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              'No orders in this time period',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ).animate().fadeIn(duration: 600.ms, delay: 700.ms);
+    }
+    
     return SizedBox(
       height: 220,
       child: ListView.builder(
@@ -867,18 +1573,39 @@ Widget build(BuildContext context) {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Item image with shimmer effect on load
+                // Item image with error handling
                 Stack(
                   children: [
                     ClipRRect(
                       borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(16),
                       ),
-                      child: Image.asset(
+                      child: Image.network(
                         item["image"],
                         height: 120,
                         width: double.infinity,
                         fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            height: 120,
+                            color: Colors.grey[200],
+                            alignment: Alignment.center,
+                            child: Icon(Icons.image_not_supported, color: Colors.grey[400]),
+                          );
+                        },
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Container(
+                            height: 120,
+                            color: Colors.grey[200],
+                            alignment: Alignment.center,
+                            child: CircularProgressIndicator(
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                  : null,
+                            ),
+                          );
+                        },
                       ),
                     ),
                     Positioned(
@@ -929,6 +1656,8 @@ Widget build(BuildContext context) {
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -937,6 +1666,8 @@ Widget build(BuildContext context) {
                           color: Colors.grey[600],
                           fontSize: 12,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 8),
                       Row(
@@ -973,14 +1704,7 @@ Widget build(BuildContext context) {
                   end: 0,
                   delay: 700.ms + (100.ms * index),
                   duration: 400.ms,
-                  curve: Curves.easeOutQuad)
-              .animate(
-                  onPlay: (controller) => controller.repeat(reverse: true),
-                  delay: 2.seconds)
-              .shimmer(
-                  duration: 1.seconds,
-                  angle: 0.5,
-                  color: Colors.white.withAlpha(51));
+                  curve: Curves.easeOutQuad);
         },
       ),
     );
@@ -1006,19 +1730,4 @@ Widget build(BuildContext context) {
       ),
     );
   }
-
-//   // Method to handle action tap safely - prevents setState during build
-//   // void _handleActionTap(Map<String, dynamic> action) {
-//   //   if (action['title'] == 'Manage Menu') {
-//   //     Navigator.push(
-//   //       context,
-//   //       MaterialPageRoute(builder: (context) => ManagerManageMenu()),
-//   //     );
-//   //   } else if (action['title'] == 'Manage Payment') {
-//   //     Navigator.push(
-//   //       context,
-//   //       MaterialPageRoute(builder: (context) => ManagerPaymentMethods()),
-//   //     );
-//   //   }
-//   // }
- }
+}
