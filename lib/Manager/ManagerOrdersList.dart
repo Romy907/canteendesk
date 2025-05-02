@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:shimmer/shimmer.dart';
 import 'package:http/http.dart' as http;
 import 'package:canteendesk/API/Cred.dart'; // Assuming this has your API credentials
 
@@ -708,7 +707,7 @@ class _ManagerOrderListState extends State<ManagerOrderList>
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'Amount: ${order['totalAmount'].toString() ?? order['total'] ?? '0'}',
+                              'Amount: ${order['totalAmount'].toString()}',
                               style: TextStyle(fontWeight: FontWeight.bold),
                             ),
                             Row(
@@ -777,9 +776,7 @@ class _ManagerOrderListState extends State<ManagerOrderList>
                         // Amount
                         Expanded(
                           child: Text(
-                            order['totalAmount'].toString() ??
-                                order['total'] ??
-                                '0',
+                            order['totalAmount'].toString(),
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
@@ -1548,7 +1545,6 @@ class _ManagerOrderListState extends State<ManagerOrderList>
 
           if (liveOrderResponse.statusCode == 200 &&
               liveOrderResponse.body != 'null') {
-            final liveOrderData = json.decode(liveOrderResponse.body);
 
             // 2. Create completed order
             await http.put(
@@ -2365,122 +2361,6 @@ void _showRejectDialog(Map<String, dynamic> order) {
     }
   }
 
-  Widget _buildDeliveryTimer(Map<String, dynamic> order) {
-    final String orderId = order['orderId'] ?? order['id'];
-
-    // If no timer is running for this order, start one
-    if (!orderTimers.containsKey(orderId)) {
-      // Record the start time if not already set
-      orderStartTimes[orderId] = orderStartTimes[orderId] ?? DateTime.now();
-
-      // Parse the estimated delivery time (e.g., "20-30 mins")
-      if (order['estimatedTime'] != null) {
-        final String estTime = order['estimatedTime'];
-        final RegExp regex = RegExp(r'(\d+)(?:-(\d+))?\s*mins?');
-        final match = regex.firstMatch(estTime);
-
-        if (match != null) {
-          int minTime = int.parse(match.group(1)!);
-          int maxTime = match.group(2) != null ? int.parse(match.group(2)!) : minTime;
-
-          // Use average for display
-          int avgTime = (minTime + maxTime) ~/ 2;
-          orderEstimatedTimes[orderId] = Duration(minutes: avgTime);
-        }
-      } else {
-        // Default to 30 minutes if no estimate is provided
-        orderEstimatedTimes[orderId] = Duration(minutes: 30);
-      }
-
-      // Start the timer to update the UI every second
-      orderTimers[orderId] = Timer.periodic(Duration(seconds: 1), (_) {
-        if (mounted) setState(() {});
-      });
-    }
-
-    // Calculate elapsed time
-    final Duration elapsed = DateTime.now().difference(orderStartTimes[orderId]!);
-    final Duration estimated = orderEstimatedTimes[orderId]!;
-
-    // Calculate progress (0.0 to 1.0)
-    final double progress = elapsed.inSeconds / estimated.inSeconds;
-    final bool isOverdue = progress > 1.0;
-
-    // Format the remaining/overdue time
-    String timeText;
-    Color timeColor;
-
-    if (isOverdue) {
-      final Duration overdue = elapsed - estimated;
-      timeText = '+${_formatDuration(overdue)} over';
-      timeColor = Colors.red;
-    } else {
-      final Duration remaining = estimated - elapsed;
-      timeText = '${_formatDuration(remaining)} left';
-      timeColor = progress > 0.8 ? Colors.orange : Colors.green;
-    }
-
-    // Desktop-optimized timer display
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 160,
-          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: timeColor.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: timeColor.withOpacity(0.5)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isOverdue ? Icons.timer_off : Icons.timer,
-                size: 16,
-                color: timeColor,
-              ),
-              SizedBox(width: 8),
-              Text(
-                timeText,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: timeColor,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Spacer(),
-              // Progress indicator
-              Container(
-                width: 40,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-                child: FractionallySizedBox(
-                  alignment: Alignment.centerLeft,
-                  widthFactor: progress > 1.0 ? 1.0 : progress,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: timeColor,
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  String _formatDuration(Duration duration) {
-    int minutes = duration.inMinutes;
-    int seconds = (duration.inSeconds % 60);
-    return '$minutes:${seconds.toString().padLeft(2, '0')}';
-  }
 }
 
 // Enum to represent order status

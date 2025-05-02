@@ -3,7 +3,6 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:intl/intl.dart';
-import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -158,11 +157,6 @@ class _ManagerReportState extends State<ManagerReport> with SingleTickerProvider
       String? tokenId = await FirebaseManager().refreshIdTokenAndSave();
       
       // Calculate date range based on the selected timeframe
-      DateTime startDate = _getStartDateForTimeFrame();
-      final endDate = DateTime.now();
-      
-      // Format dates for query if needed
-      final startTimestamp = startDate.toIso8601String();
       
       // Query orders path with date filtering if your database supports it
       final ordersPath = '$_storeId/orders.json?auth=$tokenId';

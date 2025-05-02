@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:shimmer/shimmer.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
@@ -379,17 +378,6 @@ class ManagerOperatingHoursState extends State<ManagerOperatingHours> with Singl
     }
   }
 
-  void _updateStoreTiming(int index, StoreTiming newTiming) {
-    setState(() {
-      _storeTimings[index] = newTiming;
-      _hasChanges = true;
-      
-      // If this is the selected day, update the selection
-      if (_selectedDayTiming?.day == newTiming.day) {
-        _selectedDayTiming = newTiming;
-      }
-    });
-  }
 
   String _formatTimeOfDay(TimeOfDay timeOfDay) {
     final now = DateTime.now();

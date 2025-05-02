@@ -156,7 +156,6 @@ class _ManagerHomeState extends State<ManagerHome>
   String _selectedCategory = 'All';
 
   // Selected index for navigation rail
-  int _selectedIndex = 0;
   DateTime _currentDate = DateTime.now();
 
   @override
@@ -672,18 +671,7 @@ class _ManagerHomeState extends State<ManagerHome>
     });
   }
 
-  // Method to safely handle time range changes
-  void _updateTimeRange(String? value) {
-    if (value != null && _selectedTimeRange != value) {
-      setState(() {
-        _selectedTimeRange = value;
-      });
-
-      // Fetch new data with updated time range
-      _fetchOrderData();
-    }
-  }
-
+  
   // Method to refresh data
   Future<void> _refreshData() async {
     await _fetchOrderData();
@@ -1710,24 +1698,4 @@ class _ManagerHomeState extends State<ManagerHome>
     );
   }
 
-  Widget _buildQuickActionsShimmer() {
-    return Shimmer.fromColors(
-      baseColor: Colors.grey[300]!,
-      highlightColor: Colors.grey[100]!,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: List.generate(
-          4,
-          (index) => Container(
-            width: 70,
-            height: 90,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }

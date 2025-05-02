@@ -523,7 +523,6 @@ class _AddEditMenuItemScreenState extends State<AddEditMenuItemScreen>
     
     // Define responsive breakpoints
     final bool isMobile = size.width < 600;
-    final bool isTablet = size.width >= 600 && size.width < 960;
     final bool isDesktop = size.width >= 960;
 
     return GestureDetector(
